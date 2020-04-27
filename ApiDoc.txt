@@ -1,0 +1,114 @@
+API:
+The command is over when there are two newlines in a row.
+The first line is the command- any subsequent line is a parameter.
+
+commands:
+---
+client->server
+---
+LOGIN
+username
+password
+-returns
+session id on success, 'authentication failure' on failure
+
+LOGOUT
+session id
+-returns
+success if valid session id, failure if not
+
+GETCURRENTUSER
+session id
+-returns
+logged in username with session id
+
+NEWUSER
+username
+password
+-returns
+session id on success, 'creation failure' on failure'
+
+NEWCHALLENGE
+challengee username
+desired color (WHITE/BLACK/RANDOM/OPPONENT)
+session id
+-returns
+success or failure message
+
+RESPOND
+challenge id
+type (ACCEPT/REJECT/RESCIND)
+desired color (WHITE/BLACK/RANDOM)
+session id
+-returns
+game id if accept, success or failure message otherwise
+
+SHOWCHALLENGES
+OUT/IN
+session id
+-returns
+list of outgoing or incoming challenges
+
+SHOWACTIVEGAMES
+session id
+-returns
+list of active games
+
+SHOWHISTORY
+session id
+-returns
+list of finished games
+
+GETSTATE
+game id
+session id
+-returns
+current board state of game, or failure
+
+MOVE
+game id
+start square
+end square
+session id
+-returns
+new game configuration on success, error message on failure
+
+PROMOTE
+game id
+square
+type
+session id
+-returns
+new game configuration on success, error message on failure
+
+SHOWVALIDMOVES
+game id
+square
+session id
+-returns
+list of valid destinations for the piece on the square on success, null on failure
+    empty list if the piece can't move, null if no piece or opponent's piece
+
+SHOWMOVEHISTORY
+game id
+session id
+-returns
+list of moves from the game, or failure message
+    
+RESIGNGAME
+game id
+session id
+-returns
+success or failure message
+
+DRAWGAME
+game id
+OFFER/ACCEPT/CLAIM (last line unless it's CLAIM)
+THREEFOLD/FIFTYMOVE (if CLAIM)
+NOW/AFTERMOVE (if CLAIM)
+-returns
+success or failure message
+
+KEEPALIVE
+-returns
+SUCCESS
