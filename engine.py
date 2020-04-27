@@ -125,6 +125,19 @@ def respond(cursor, params):
     gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Turn": 'W', "Position": STARTPOSITION, "AwaitingPromote": 0})
     return bytes("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid), "UTF-8")
     
+def getgamestate(cursor, params):
+    gameid, sessionid = params
+    uname = serverlogic.getunamefromsession(sessionid, True)
+    usercursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":uname}, "Id")
+    userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
+    uid = userdata['Id']
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position"])
+    if (gamedata == None): #invalid game id for user
+        return b"FAILURE\r\nCouldn't find game with specified Id"
+    else:
+        return bytes("SUCCESS\r\n%s\r\n\r\n"%gamedata["Position"], "UTF-8")
+
 def killserver(cursor, params):
     if len(params) == 0:
         return b"FAILURE\r\n\r\n"
@@ -145,6 +158,7 @@ cmdfunctions = {
     "SHOWCHALLENGES" : showchallenges,
     "SHOWACTIVEGAMES" : showactivegames,
     "RESPOND" : respond,
+    "GETGAMESTATE" : getgamestate,
     "KILLSERVER" : killserver
 }
 

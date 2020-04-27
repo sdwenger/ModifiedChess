@@ -59,7 +59,7 @@ session id
 -returns
 list of finished games
 
-GETSTATE
+GETGAMESTATE
 game id
 session id
 -returns

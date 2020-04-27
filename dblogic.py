@@ -77,6 +77,23 @@ def selectWithColumnsMatch(cursor, table, data, getcols='*'):
     cursor.execute(selectprep, valtuple)
     return cursor
 
+def selectGameWithPlayer(cursor, playerid, otherdata, getcols='*'):
+    if type(playerid) != list:
+        playerid = [playerid]
+    othercols = [i for i in otherdata] #force order matching
+    othercolmatchstrings = [i+'=?' for i in othercols]
+    othercolumnstring = ' AND '.join(othercolmatchstrings)
+    playerstring = ' OR '.join(["White=? OR Black=?"]*len(playerid))
+    if len(otherdata) == 0:
+        totalcolumnstring = "(%s)"%(othercolumnstring, playerstring)
+        valtuple = tuple(sum(((i,i) for i in playerid), ()))
+    else:
+        totalcolumnstring = "%s AND (%s)"%(othercolumnstring, playerstring)
+        valtuple = tuple(otherdata[i] for i in othercols) + tuple(sum(((i,i) for i in playerid), ()))
+    selectprep = baseSelectQuery%(getcols, "Games", totalcolumnstring)
+    cursor.execute(selectprep, valtuple)
+    return cursor
+
 def unwrapCursor(cursor, asList=True, keyset=None):
     data = cursor.fetchall()
     if len(data) == 0:

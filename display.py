@@ -39,7 +39,9 @@ class GameViewer:
         self.gameid = gameid
 
     def __call__(self):
-        print("Viewing game %s"%self.gameid)
+        uicomponents['/homeframe'].place_forget()
+        request = bytes("GETGAMESTATE\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
+        receiver.sock.send(request)
 
 class ResponseHandler:
     def __init__(self, challengeid, selectcolor, responsefunction):
@@ -253,9 +255,24 @@ def cancelchallenge():
     servershowchallenges()
     servershowactivegames()
 
+def packsquares(blackview=False):
+    basepath = '/gameframe/gameboard/squaresInitialized'
+    if not uicomponents[basepath]:
+        uicomponents[basepath] = True
+        for i in range(64):
+            row = (i//8)+1
+            column = chr(i%8+97)
+            squarepath = "%s/%s%s"%(basepath, row, column)
+            uicomponents[squarepath] = tk.Image(uicomponents[basepath])
+
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-s.connect(("localhost", 8888))
+if ("-p" in sys.argv):
+    port = int(sys.argv[sys.argv.index("-p")+1])
+else:
+    port = 8888
+
+s.connect(("localhost", port))
 
 receiver = Receiver(s)
 receiver.start()
@@ -297,6 +314,22 @@ uicomponents['/newchallengeframe/confirmchallenge'].place(relx=.18, relwidth=.32
 uicomponents['/newchallengeframe/cancel'] = tk.Button(uicomponents['/newchallengeframe'], text="Cancel", command=cancelchallenge)
 uicomponents['/newchallengeframe/cancel'].place(relx=.5, relwidth=.32, rely=.93, relheight=.04)
 
+uicomponents['/gameframe'] = tk.Frame(uicomponents['/'])
+uicomponents['/gameframe/gameheader'] = tk.Frame(uicomponents['/gameframe'])
+uicomponents['/gameframe/gameheader/return'] = tk.Button(uicomponents['/gameframe/gameheader'], text="Back to menu")
+uicomponents['/gameframe/gameheader/playerslabel'] = tk.Label(uicomponents['/gameframe/gameheader'], text="White vs Black")
+uicomponents['/gameframe/gameheader/turnlabel'] = tk.Label(uicomponents['/gameframe/gameheader'], text="White to Move")
+uicomponents['/gameframe/gamecontrol'] = tk.Frame(uicomponents['/gameframe'])
+uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Offer Draw")
+uicomponents['/gameframe/gamecontrol/claimdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Claim Draw")
+uicomponents['/gameframe/gamecontrol/resign'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Resign")
+uicomponents['/gameframe/gamecontrol/claimdrawoptions'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
+uicomponents['/gameframe/gameboard'] = tk.Frame(uicomponents['/gameframe'])
+uicomponents['/gameframe/gameboard/squaresInitialized'] = False
+packsquares()
+    
 uicomponents['/'].geometry("1400x800")
 uicomponents['/'].mainloop()
 receiver.close()

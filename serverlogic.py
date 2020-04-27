@@ -2,6 +2,7 @@ import socket
 import time
 import threading
 import datetime
+import random
 
 sessions = {}
 
@@ -114,7 +115,9 @@ def mainloop(connHandler=None, loopHandler=None):
     if loopHandler == None:
         def loopHandler():
             pass
-    serverThread = ServerThread('127.0.0.1', 8888, connHandler)
+    port = random.randrange(8000, 9000)
+    serverThread = ServerThread('127.0.0.1', port, connHandler)
+    print("Port %s"%port)
     serverThread.start()
 
     global acceptConnections
