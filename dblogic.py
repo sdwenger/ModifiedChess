@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import hashlib
+import itertools
 
 baseInsertQuery = "INSERT INTO %s (%s) VALUES (%s)"
 baseSelectQuery = "SELECT %s FROM %s WHERE %s"
@@ -75,3 +76,15 @@ def selectWithColumnsMatch(cursor, table, data, getcols='*'):
         selectprep = selectprep.replace(' WHERE ', '')
     cursor.execute(selectprep, valtuple)
     return cursor
+
+def unwrapCursor(cursor, asList=True, keyset=None):
+    data = cursor.fetchall()
+    if len(data) == 0:
+        return [] if asList else None
+    if keyset != None:
+        if len(data[0]) != len(keyset):
+            raise ValueError("Keyset must be the same length as set of returned columns")
+        formatted = [{j:k for j,k in itertools.zip_longest(keyset,i)} for i in data]
+    else:
+        formatted = data
+    return formatted if asList else formatted[0]

@@ -34,6 +34,13 @@ def writeout(isOut, oppname, selection):
     first = firsttemplate%(subj, verb, obj)
     return first + second
 
+class GameViewer:
+    def __init__(self, gameid):
+        self.gameid = gameid
+
+    def __call__(self):
+        print("Viewing game %s"%self.gameid)
+
 class ResponseHandler:
     def __init__(self, challengeid, selectcolor, responsefunction):
         self.challengeid = challengeid
@@ -66,37 +73,70 @@ def handleShowChallenges(params):
     uicomponents[path] = tk.Frame(uicomponents['/homeframe'])
     header = "Awaiting your response" if not isOut else "Awaiting opponent's response..."
     uicomponents[path+'/header'] = tk.Label(uicomponents[path], text=header)
-    uicomponents[path+'frames'] = []
-    uicomponents[path+'rescinds'] = []
-    uicomponents[path+'accepts'] = []
-    uicomponents[path+'rejects'] = []
+    uicomponents[path+'frames'] = {}
+    uicomponents[path+'rescinds'] = {}
+    uicomponents[path+'accepts'] = {}
+    uicomponents[path+'rejects'] = {}
     listbase = 40
     entryheight = 40
     uicomponents[path+'/header'].place(relx=0, relwidth=1, y=0, height=listbase)
     for i in challenges:
         challengeid, opponent, selection = i.split()
         container = tk.Frame(uicomponents[path])
-        uicomponents[path+'frames'].append(container)
+        uicomponents[path+'frames'][challengeid] = container
         label = tk.Label(container, text=writeout(isOut, opponent, selection))
         label.place(relx=0, relwidth=1, rely=0, relheight=.5)
         if isOut:
             rescinder = tk.Button(container, text="Rescind", command=ResponseHandler(challengeid, False, rescindchallenge))
             rescinder.place(relx=.35, relwidth=.3, rely=.5, relheight=.5)
-            uicomponents[path+'rescinds'].append(rescinder)
+            uicomponents[path+'rescinds'][challengeid] = rescinder
         else:
             accepter = tk.Button(container, text="Accept", command=ResponseHandler(challengeid, selection=="OPPONENT", acceptchallenge))
             accepter.place(relx=.1, relwidth=.3, rely=.5, relheight=.5)
             rejecter = tk.Button(container, text="Reject", command=ResponseHandler(challengeid, False, rejectchallenge))
             rejecter.place(relx=.6, relwidth=.3, rely=.5, relheight=.5)
-            uicomponents[path+'accepts'].append(accepter)
-            uicomponents[path+'rejects'].append(rejecter)
+            uicomponents[path+'accepts'][challengeid] = accepter
+            uicomponents[path+'rejects'][challengeid] = rejecter
         container.place(relx=0, relwidth=1, y=listbase, height=entryheight)
         listbase += entryheight
     relx = .35 if not isOut else 0
     uicomponents[path].place(relx=relx, rely=.1, relheight=.8, relwidth=.3)
 
 def handleShowActiveGames(params):
-    print(params)
+    games = params
+    path = '/homeframe/activegames'
+    uicomponents[path] = tk.Frame(uicomponents['/homeframe'])
+    listbase = 40
+    entryheight = 40
+    uicomponents[path+'/header'] = tk.Label(uicomponents[path], text="Active games")
+    uicomponents[path+'/header'].place(relx=0, relwidth=1, y=0, height=listbase)
+    uicomponents[path+'frames'] = {}
+    uicomponents[path+'viewbuttons'] = {}
+
+    listbase = 40
+    entryheight = 40
+    uicomponents[path+'/header'].place(relx=0, relwidth=1, y=0, height=listbase)
+    for i in games:
+        gameid, white, black, turn, promoteBit = i.split()
+        awaitingPromote = (promoteBit == 1)
+        container = tk.Frame(uicomponents[path])
+        uicomponents[path+'frames'][gameid] = container
+        label = tk.Label(container, text="%s vs. %s"%(white, black))
+        label.place(relx=0, relwidth=1, rely=0, relheight=.5)
+
+        viewer = tk.Button(container, text="View", command=GameViewer(gameid) )
+        viewer.place(relx=.35, relwidth=.3, rely=.5, relheight=.5)
+
+        players = {"W":white, "B":black}
+        isactiveplayer = receiver.uname == players[turn]
+        turntemplate = "%s pawn is awaiting promotion." if awaitingPromote else "%s move."
+        possessive = "Your" if isactiveplayer else ("%s's"%players[turn])
+        turnlabel = turntemplate % possessive
+
+        uicomponents[path+'viewbuttons'][gameid] = viewer
+        container.place(relx=0, relwidth=1, y=listbase, height=entryheight)
+        listbase += entryheight
+    uicomponents[path].place(relx=.65, rely=.1, relheight=.8, relwidth=.3)
 
 def handleNewChallenge(params):
     uicomponents['/newchallengeframe'].place_forget()
@@ -257,6 +297,6 @@ uicomponents['/newchallengeframe/confirmchallenge'].place(relx=.18, relwidth=.32
 uicomponents['/newchallengeframe/cancel'] = tk.Button(uicomponents['/newchallengeframe'], text="Cancel", command=cancelchallenge)
 uicomponents['/newchallengeframe/cancel'].place(relx=.5, relwidth=.32, rely=.93, relheight=.04)
 
-uicomponents['/'].geometry("1200x800")
+uicomponents['/'].geometry("1400x800")
 uicomponents['/'].mainloop()
 receiver.close()

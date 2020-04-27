@@ -5,6 +5,16 @@ import datetime
 import time
 import random
 
+STARTPOSITION = "RNBQKBNRPPPPPPPP--------------------------------pppppppprnbqkbnr++++-W"
+'''
+70 characters long
+First 64 (0-63) characters are occupants of each square. In order: a1, b1, ... h1, a2, ... h8.
+- means empty, capital means white piece, lowercase means black piece; p=pawn, r=rook, n=knight, b=bishop, q=queen, k=king
+Next 4 (64-67) characters are castling rights. + means still there, - means it's not. In order are; white's kingside, white's queenside, black's kingside, black's queenside
+Next character (68) is available en passant. If -, no en passant is available. If one is available, this will be the column of the pawn that can be en passanted. If capitalized, it means an en passant move is available in row 2 or 7.
+Final character (69) is the turn. (W)hite or (B)lack
+'''
+
 def login(cursor, params):
     uname = params[0]
     pwd = params[1]
@@ -67,14 +77,14 @@ def showchallenges(cursor, params):
         return bytes("%s\r\n%s\r\n\r\n"%(params[0],formatted), "UTF-8")
 
 def showactivegames(cursor, params):
-    jointable = '''Games INNER JOIN Users AS WhiteUser ON WhiteUser.Id=Games.White
-                    INNER JOIN Users AS BlackUser ON BlackUser.Id=Games.Black
+    jointable = '''Games INNER JOIN (SELECT Id, Name FROM Users) AS WhiteUser ON WhiteUser.Id=Games.White
+                    INNER JOIN (SELECT Id, Name FROM Users) AS BlackUser ON BlackUser.Id=Games.Black
                     INNER JOIN GameStatuses ON GameStatuses.Id=Games.Status'''
     uname = serverlogic.getunamefromsession(params[0], True)
     whereprep = " WHERE (WhiteUser.Name=? OR BlackUser.Name=?) AND GameStatuses.Description='In Progress'"
-    selectclause = "SELECT * FROM "
+    selectclause = "SELECT Games.Id, WhiteUser.Name, BlackUser.Name, Games.Turn, Games.AwaitingPromote FROM "
     rescursor = cursor.execute(selectclause + jointable + whereprep, (uname,uname))
-    data = rescursor.fetchall()
+    data = dblogic.unwrapCursor(rescursor)
     if len(data) == 0:
         return b'\r\n'
     else:
@@ -90,29 +100,30 @@ def respond(cursor, params):
     else:
         sessionid = params[2]
     uname = serverlogic.getunamefromsession(sessionid, True)
-    rescursor = dblogic.selectWithColumnsMatch(cursor, "Challenges INNER JOIN ColorSelections ON Challenges.ColorSelection=ColorSelections.Id", {"Id":challengeid}, "Challenger, Challengee, ColorSelections.Name")
-    challenge = rescursor.fetchall()[0]
-    if challenge[2] == "WHITE":
+    rescursor = dblogic.selectWithColumnsMatch(cursor, "Challenges INNER JOIN ColorSelections ON Challenges.ColorSelection=ColorSelections.Id", {"Challenges.Id":challengeid}, "Challenger, Challengee, ColorSelections.Name")
+    challenge = dblogic.unwrapCursor(cursor, False)
+    print(challenge)
+    if challenge[2] == "White":
         blackindex = 1
-    elif challenge[2] == "BLACK":
+    elif challenge[2] == "Black":
         blackindex = 0
-    elif challenge[2] == "RANDOM":
-        blackindex = randrange(2)
-    elif challenge[2] == "OPPONENT":
+    elif challenge[2] == "Random":
+        blackindex = random.randrange(2)
+    elif challenge[2] == "Opponent":
         if colorselection == "WHITE":
             blackindex = 0
         elif colorselection == "BLACK":
             blackindex = 1
         elif colorselection == "RANDOM":
-            blackindex = randrange(2)
+            blackindex = random.randrange(2)
             
     whiteid, blackid = challenge[1-blackindex], challenge[blackindex]
     cursor.execute("DELETE FROM Challenges WHERE Id=?", (challengeid,))
-    cursor.commit()
-    rescursor = dblogic.selectWithColumnsMatch(cursor, "GameSubstatuses", {"Description": "In Progress"}, "Id, Superstatus")
-    substatus = rescursor.fetchall()[0]
-    dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Turn": 'W', "AwaitingPromote": 0})
-    return b'SUCCESS\r\n\r\n'
+    cursor.connection.commit()
+    rescursor = dblogic.selectWithColumnsMatch(cursor, "GameSubstatuses", {"Description": "In progress"}, "Id, Superstatus")
+    substatus = dblogic.unwrapCursor(cursor, False)
+    gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Turn": 'W', "Position": STARTPOSITION, "AwaitingPromote": 0})
+    return bytes("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid), "UTF-8")
     
 def killserver(cursor, params):
     if len(params) == 0:
@@ -151,10 +162,11 @@ def handler(connhandler, data):
     except Exception as e:
         response = bytes(str(e), "UTF-8")
         serverlogic.acceptConnections = False
+        raise
     finally:
         dblogic.closeConnection()
-    print("Data: "+str(data))
-    print("Response: "+str(response))
-    connhandler.conn.send(bytes(cmd, "UTF-8")+b'\r\n'+response)
+        print("Data: "+str(data))
+        print("Response: "+str(response))
+        connhandler.conn.send(bytes(cmd, "UTF-8")+b'\r\n'+response)
 
 serverlogic.main(handler)
