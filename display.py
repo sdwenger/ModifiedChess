@@ -7,6 +7,23 @@ import sys
 uicomponents = {}
 
 challengeoptions = [["Play as White", "WHITE"],["Play as Black", "BLACK"],["Select randomly","RANDOM"],["Let opponent decide","OPPONENT"]]
+selectedSquare = None
+
+def genphotoimages():
+    return {
+        "P": tk.PhotoImage(file="White_Pawn.png"),
+        "R": tk.PhotoImage(file="White_Rook.png"),
+        "N": tk.PhotoImage(file="White_Knight.png"),
+        "B": tk.PhotoImage(file="White_Bishop.png"),
+        "Q": tk.PhotoImage(file="White_Queen.png"),
+        "K": tk.PhotoImage(file="White_King.png"),
+        "p": tk.PhotoImage(file="Black_Pawn.png"),
+        "r": tk.PhotoImage(file="Black_Rook.png"),
+        "n": tk.PhotoImage(file="Black_Knight.png"),
+        "b": tk.PhotoImage(file="Black_Bishop.png"),
+        "q": tk.PhotoImage(file="Black_Queen.png"),
+        "k": tk.PhotoImage(file="Black_King.png")
+    }
 
 def handleLogin(params):
     if (params[0] == "SUCCESS"):
@@ -39,7 +56,6 @@ class GameViewer:
         self.gameid = gameid
 
     def __call__(self):
-        uicomponents['/homeframe'].place_forget()
         request = bytes("GETGAMESTATE\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
         receiver.sock.send(request)
 
@@ -51,6 +67,12 @@ class ResponseHandler:
         
     def __call__(self):
         self.responsefunction(self.challengeid, self.selectcolor)
+
+class SquareClickHandler:
+    def __init__(self, square):
+        self.square = square
+    def __call__(self, event):
+        print(self.square)
 
 def rescindchallenge(challengeid, selectcolor):
     request = bytes("RESPOND\r\n%s\r\nRESCIND\r\n%s\r\n\r\n"%(challengeid, receiver.sessionid), "UTF-8")
@@ -146,11 +168,26 @@ def handleNewChallenge(params):
     servershowchallenges()
     servershowactivegames()
 
+def handleGetGameState(params):
+    uicomponents['/homeframe'].place_forget()
+    uicomponents['/gameframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
+    position = params[1]
+    squares = position[:64]
+    for i in range(64):
+        rawrow = i//8
+        row = (rawrow)+1
+        rawcol = i%8
+        column = chr(rawcol+97)
+        square = str(column)+str(row)
+        if squares[i] in photoimages:
+            uicomponents['/gameframe/gameboard/'+square].create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
+
 functions = {
     "LOGIN" : handleLogin,
     "SHOWCHALLENGES" : handleShowChallenges,
     "SHOWACTIVEGAMES" : handleShowActiveGames,
     "NEWCHALLENGE" : handleNewChallenge,
+    "GETGAMESTATE" : handleGetGameState
 }
 
 def sockExtract(sock, bufsize):
@@ -227,9 +264,9 @@ def killcommand():
 
 def servershowchallenges():
     receiver.sock.send(bytes('SHOWCHALLENGES\r\nOUT\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
-    time.sleep(1)
+    time.sleep(.5)
     receiver.sock.send(bytes('SHOWCHALLENGES\r\nIN\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
-    time.sleep(1)
+    time.sleep(.5)
 
 def servershowactivegames():
     receiver.sock.send(bytes('SHOWACTIVEGAMES\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
@@ -256,14 +293,35 @@ def cancelchallenge():
     servershowactivegames()
 
 def packsquares(blackview=False):
-    basepath = '/gameframe/gameboard/squaresInitialized'
-    if not uicomponents[basepath]:
-        uicomponents[basepath] = True
+    basepath = '/gameframe/gameboard'
+    colors = ["Black", "White"]
+    initpath = "%s/%s"%(basepath, "squaresInitialized")
+    if not uicomponents[initpath]:
+        uicomponents[initpath] = True
         for i in range(64):
-            row = (i//8)+1
-            column = chr(i%8+97)
-            squarepath = "%s/%s%s"%(basepath, row, column)
-            uicomponents[squarepath] = tk.Image(uicomponents[basepath])
+            rawrow = i//8
+            row = (rawrow)+1
+            rawcol = i%8
+            column = chr(rawcol+97)
+            square = str(column)+str(row)
+            squarepath = "%s/%s"%(basepath, square)
+            squarecolor = colors[(rawrow+rawcol)%2]
+            uicomponents[squarepath] = tk.Canvas(uicomponents[basepath], bg=squarecolor)
+            uicomponents[squarepath].bind("<Button-1>", SquareClickHandler(square))
+    for i in range(64):
+        rawrow = i//8
+        row = (rawrow)+1
+        rawcol = i%8
+        column = chr(rawcol+97)
+        square = str(column)+str(row)
+        uicol = rawcol/8
+        uirow = rawrow/8
+        if blackview:
+            uicol = .875 - uicol
+        else:
+            uirow = .875 - uirow
+        squarepath = "%s/%s"%(basepath, square)
+        uicomponents[squarepath].place(relwidth=.125, relheight=.125, relx=uicol, rely=uirow)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -328,8 +386,10 @@ uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = tk.Listbox(uico
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
 uicomponents['/gameframe/gameboard'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gameboard/squaresInitialized'] = False
+uicomponents['/gameframe/gameboard'].place(x=300, width=800, height=800, y=100)
 packsquares()
+photoimages = genphotoimages()
     
-uicomponents['/'].geometry("1400x800")
+uicomponents['/'].geometry("1400x1000")
 uicomponents['/'].mainloop()
 receiver.close()

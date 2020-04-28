@@ -3,6 +3,7 @@ import time
 import threading
 import datetime
 import random
+import chesslogic
 
 sessions = {}
 
