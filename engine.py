@@ -134,9 +134,15 @@ def getgamestate(cursor, params):
     gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position, White")
     gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "White"])
     if (gamedata == None): #invalid game id for user
-        return b"FAILURE\r\nCouldn't find game with specified Id"
+        return b"FAILURE\r\nCouldn't find game with specified Id\r\n\r\n"
     else:
         return bytes("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gamedata["Position"],'W' if uid==gamedata["White"] else 'B'), "UTF-8")
+
+def move(cursor, params):
+    gameid, initial, final, sessionid = params
+    uname = serverlogic.getunamefromsession(sessionid, True)
+    print("Attempting move: %s->%s"%(initial, final))
+    return b"Failure\r\nNot yet implemented\r\n\r\n"
 
 def killserver(cursor, params):
     if len(params) == 0:
@@ -159,6 +165,7 @@ cmdfunctions = {
     "SHOWACTIVEGAMES" : showactivegames,
     "RESPOND" : respond,
     "GETGAMESTATE" : getgamestate,
+    "MOVE" : move,
     "KILLSERVER" : killserver
 }
 

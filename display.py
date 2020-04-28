@@ -13,9 +13,9 @@ validSquares = []
 specialSquares = []
 checkSquare = None
 
-selectcolor = "Green"
+selectcolor = "#00FF00"
 validcolor = "Blue"
-specialcolor = "Pink"
+specialcolor = "#FF00FF"
 checkcolor = "Red"
 
 def getNormalColor(row, column):
@@ -85,7 +85,7 @@ class SquareClickHandler:
     def __init__(self, square):
         self.square = square
     def __call__(self, event):
-        global selectedSquare
+        global selectedSquare, validSquares, specialSquares
         priorSelection = selectedSquare
         if priorSelection == None:
             x,y = chesslogic.squareNameToXY(self.square)
@@ -93,15 +93,23 @@ class SquareClickHandler:
             position = uicomponents['/gameframe/position']
             color = uicomponents['/gameframe/gameboard/color']
             piece = position[index]
-            print(x,y,piece, color, position[69])
             if piece != '-' and color==position[69] and ((color == "W") == (piece.isupper())):
                 canvas = uicomponents['/gameframe/gameboard/%s'%self.square]
                 canvas.config(bg=selectcolor)
                 selectedSquare = self.square
+                validSquares, specialSquares = chesslogic.pieceValidMoves(position, self.square)
+                for i in validSquares:
+                    canvas = uicomponents['/gameframe/gameboard/%s'%i]
+                    canvas.config(bg=validcolor)
+                for i in specialSquares:
+                    canvas = uicomponents['/gameframe/gameboard/%s'%i]
+                    canvas.config(bg=specialcolor)
         else:
             selectedSquare = None
             unhighlight(priorSelection)
-            print("Move: %s->%s"%(priorSelection, self.square))
+            for i in validSquares+specialSquares:
+                unhighlight(i)
+            validSquares, specialSquares = [],[]
 
 def unhighlight(square):
     canvas = uicomponents['/gameframe/gameboard/%s'%square]
