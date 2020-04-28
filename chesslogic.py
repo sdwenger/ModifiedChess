@@ -47,10 +47,10 @@ def checkStatus(position, checkTerminalConditions=True):
             continue
         if isEnemy(target, linedPiece):
             piecetype = linedPiece.lower()
-            if piecetype == 'q' or
-                    (piecetype == 'k' and distance==1) or
-                    (piecetype == 'r' and (0 in i)) or
-                    (piecetype == 'b' and not (0 in i)) or
+            if piecetype == 'q' or \
+                    (piecetype == 'k' and distance==1) or \
+                    (piecetype == 'r' and (0 in i)) or \
+                    (piecetype == 'b' and not (0 in i)) or \
                     (piecetype == 'p' and distance==1 and not (0 in i) and i[1] == enemyPawnAttackDirection):
                 check += 1
     if not checkTerminalConditions:
@@ -86,11 +86,11 @@ def clearLine(position, x1, y1, x2, y2):
     return True
 
 def xyToIndex(x, y):
-    return 8*x+y-9
+    return 8*y+x-9
 
 def indexToXY(index):
-    x = i//8+1
-    y = i%8+1
+    y = i//8+1
+    x = i%8+1
     return (x,y)
 
 def squareNameToXY(squareName):

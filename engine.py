@@ -71,7 +71,7 @@ def showchallenges(cursor, params):
     rescursor = dblogic.selectWithColumnsMatch(cursor, jointable, {"CurUser.Name":uname}, "Challenges.Id, OppUser.Name, ColorSelections.Name")
     data = rescursor.fetchall()
     if len(data) == 0:
-        return b'\r\n'
+        return bytes("%s\r\n\r\n"%params[0], "UTF-8")
     else:
         formatted = "\r\n".join([" ".join([str(j) for j in i]) for i in data])
         return bytes("%s\r\n%s\r\n\r\n"%(params[0],formatted), "UTF-8")
@@ -131,12 +131,12 @@ def getgamestate(cursor, params):
     usercursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position")
-    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position"])
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position, White")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "White"])
     if (gamedata == None): #invalid game id for user
         return b"FAILURE\r\nCouldn't find game with specified Id"
     else:
-        return bytes("SUCCESS\r\n%s\r\n\r\n"%gamedata["Position"], "UTF-8")
+        return bytes("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gamedata["Position"],'W' if uid==gamedata["White"] else 'B'), "UTF-8")
 
 def killserver(cursor, params):
     if len(params) == 0:

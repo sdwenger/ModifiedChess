@@ -3,11 +3,24 @@ import time
 import threading
 import tkinter as tk
 import sys
+import chesslogic
 
 uicomponents = {}
 
 challengeoptions = [["Play as White", "WHITE"],["Play as Black", "BLACK"],["Select randomly","RANDOM"],["Let opponent decide","OPPONENT"]]
 selectedSquare = None
+validSquares = []
+specialSquares = []
+checkSquare = None
+
+selectcolor = "Green"
+validcolor = "Blue"
+specialcolor = "Pink"
+checkcolor = "Red"
+
+def getNormalColor(row, column):
+    colors = ["Black", "White"]
+    return colors[(row+column)%2]
 
 def genphotoimages():
     return {
@@ -72,7 +85,31 @@ class SquareClickHandler:
     def __init__(self, square):
         self.square = square
     def __call__(self, event):
-        print(self.square)
+        global selectedSquare
+        priorSelection = selectedSquare
+        if priorSelection == None:
+            x,y = chesslogic.squareNameToXY(self.square)
+            index = chesslogic.xyToIndex(x,y)
+            position = uicomponents['/gameframe/position']
+            color = uicomponents['/gameframe/gameboard/color']
+            piece = position[index]
+            print(x,y,piece, color, position[69])
+            if piece != '-' and color==position[69] and ((color == "W") == (piece.isupper())):
+                canvas = uicomponents['/gameframe/gameboard/%s'%self.square]
+                canvas.config(bg=selectcolor)
+                selectedSquare = self.square
+        else:
+            selectedSquare = None
+            unhighlight(priorSelection)
+            print("Move: %s->%s"%(priorSelection, self.square))
+
+def unhighlight(square):
+    canvas = uicomponents['/gameframe/gameboard/%s'%square]
+    if square == checkSquare:
+        canvas.config(bg=checkcolor)
+    else:
+        x,y = chesslogic.squareNameToXY(square)
+        canvas.config(bg=getNormalColor(x,y))
 
 def rescindchallenge(challengeid, selectcolor):
     request = bytes("RESPOND\r\n%s\r\nRESCIND\r\n%s\r\n\r\n"%(challengeid, receiver.sessionid), "UTF-8")
@@ -80,7 +117,9 @@ def rescindchallenge(challengeid, selectcolor):
     
 def acceptchallenge(challengeid, selectcolor):
     if selectcolor:
-        print("Select")
+        uicomponents['/respondchooseframe/acceptchallenge/challengeid'] = challengeid
+        uicomponents['/homeframe'].place_forget()
+        uicomponents['/respondchooseframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
     else:
         request = bytes("RESPOND\r\n%s\r\nACCEPT\r\n%s\r\n\r\n"%(challengeid, receiver.sessionid), "UTF-8")
         receiver.sock.send(request)
@@ -115,7 +154,7 @@ def handleShowChallenges(params):
             rescinder.place(relx=.35, relwidth=.3, rely=.5, relheight=.5)
             uicomponents[path+'rescinds'][challengeid] = rescinder
         else:
-            accepter = tk.Button(container, text="Accept", command=ResponseHandler(challengeid, selection=="OPPONENT", acceptchallenge))
+            accepter = tk.Button(container, text="Accept", command=ResponseHandler(challengeid, selection=="Opponent", acceptchallenge))
             accepter.place(relx=.1, relwidth=.3, rely=.5, relheight=.5)
             rejecter = tk.Button(container, text="Reject", command=ResponseHandler(challengeid, False, rejectchallenge))
             rejecter.place(relx=.6, relwidth=.3, rely=.5, relheight=.5)
@@ -172,6 +211,7 @@ def handleGetGameState(params):
     uicomponents['/homeframe'].place_forget()
     uicomponents['/gameframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
     position = params[1]
+    uicomponents['/gameframe/gameboard/color'] = params[2]
     squares = position[:64]
     for i in range(64):
         rawrow = i//8
@@ -181,6 +221,7 @@ def handleGetGameState(params):
         square = str(column)+str(row)
         if squares[i] in photoimages:
             uicomponents['/gameframe/gameboard/'+square].create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
+    uicomponents['/gameframe/position'] = position
 
 functions = {
     "LOGIN" : handleLogin,
@@ -271,6 +312,16 @@ def servershowchallenges():
 def servershowactivegames():
     receiver.sock.send(bytes('SHOWACTIVEGAMES\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
 
+def serveracceptandselect():
+    decision = uicomponents['/respondchooseframe/decision'].curselection()
+    challengeid = uicomponents['/respondchooseframe/acceptchallenge/challengeid']
+    if len(decision) != 1:
+        print("One selection")
+        return None
+    index = decision[0]
+    responsetype = challengeoptions[index][1]
+    receiver.sock.send(bytes('RESPOND\r\n%s\r\nACCEPT\r\n%s\r\n%s\r\n\r\n'%(challengeid, responsetype, receiver.sessionid), "UTF-8"))
+
 def newchallengescreen():
     uicomponents['/homeframe'].place_forget()
     uicomponents['/newchallengeframe'].place(relx=.3, rely=.3, relheight=.7, relwidth=.4)
@@ -294,7 +345,6 @@ def cancelchallenge():
 
 def packsquares(blackview=False):
     basepath = '/gameframe/gameboard'
-    colors = ["Black", "White"]
     initpath = "%s/%s"%(basepath, "squaresInitialized")
     if not uicomponents[initpath]:
         uicomponents[initpath] = True
@@ -305,7 +355,7 @@ def packsquares(blackview=False):
             column = chr(rawcol+97)
             square = str(column)+str(row)
             squarepath = "%s/%s"%(basepath, square)
-            squarecolor = colors[(rawrow+rawcol)%2]
+            squarecolor = getNormalColor(rawrow,rawcol)
             uicomponents[squarepath] = tk.Canvas(uicomponents[basepath], bg=squarecolor)
             uicomponents[squarepath].bind("<Button-1>", SquareClickHandler(square))
     for i in range(64):
@@ -322,6 +372,10 @@ def packsquares(blackview=False):
             uirow = .875 - uirow
         squarepath = "%s/%s"%(basepath, square)
         uicomponents[squarepath].place(relwidth=.125, relheight=.125, relx=uicol, rely=uirow)
+
+def cancelresponse():
+    uicomponents['/respondchooseframe'].place_forget()
+    uicomponents['/homeframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -371,6 +425,21 @@ uicomponents['/newchallengeframe/confirmchallenge'] = tk.Button(uicomponents['/n
 uicomponents['/newchallengeframe/confirmchallenge'].place(relx=.18, relwidth=.32, rely=.93, relheight=.04)
 uicomponents['/newchallengeframe/cancel'] = tk.Button(uicomponents['/newchallengeframe'], text="Cancel", command=cancelchallenge)
 uicomponents['/newchallengeframe/cancel'].place(relx=.5, relwidth=.32, rely=.93, relheight=.04)
+
+uicomponents['/respondchooseframe'] = tk.Frame(uicomponents['/'])
+uicomponents['/respondchooseframe/opplabel'] = tk.Label(uicomponents['/respondchooseframe'], text="Opponent")
+uicomponents['/respondchooseframe/opplabel'].place(relx=.35, relwidth=.15, rely=0)
+uicomponents['/respondchooseframe/oppname'] = tk.Entry(uicomponents['/respondchooseframe'])
+uicomponents['/respondchooseframe/oppname'].place(relx=.5, relwidth=.15, rely=0)
+uicomponents['/respondchooseframe/decision'] = tk.Listbox(uicomponents['/respondchooseframe'])
+uicomponents['/respondchooseframe/decision'].place(relx=.35, relwidth=.3, rely=.2)
+
+[uicomponents['/respondchooseframe/decision'].insert(tk.END,i[0]) for i in challengeoptions if i[1]!="OPPONENT"]
+
+uicomponents['/respondchooseframe/acceptchallenge'] = tk.Button(uicomponents['/respondchooseframe'], text="Confirm Selection", command=serveracceptandselect)
+uicomponents['/respondchooseframe/acceptchallenge'].place(relx=.18, relwidth=.32, rely=.93, relheight=.04)
+uicomponents['/respondchooseframe/cancel'] = tk.Button(uicomponents['/respondchooseframe'], text="Cancel", command=cancelresponse)
+uicomponents['/respondchooseframe/cancel'].place(relx=.5, relwidth=.32, rely=.93, relheight=.04)
 
 uicomponents['/gameframe'] = tk.Frame(uicomponents['/'])
 uicomponents['/gameframe/gameheader'] = tk.Frame(uicomponents['/gameframe'])
