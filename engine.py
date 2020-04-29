@@ -41,15 +41,15 @@ def newchallenge(cursor, params):
     if (uname == oppname):
         return b'FAILURE\r\nCannot challenge yourself\r\n\r\n'
     colorselection = params[1].title()
-    oppcursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":oppname})
+    oppcursor = dblogic.selectCommon(cursor, "Users", {"Name":oppname})
     oppdata = oppcursor.fetchall()
     if len(oppdata) == 0:
         return bytes("FAILURE\r\nNo such user %s"%oppname, "UTF-8")
     oppid = oppdata[0][0]
-    usercursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":uname})
+    usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname})
     userdata = usercursor.fetchall()
     uid = userdata[0][0]
-    colorcursor = dblogic.selectWithColumnsMatch(cursor, "ColorSelections", {"Name":colorselection})
+    colorcursor = dblogic.selectCommon(cursor, "ColorSelections", {"Name":colorselection})
     colordata = colorcursor.fetchall()
     colorid = colordata[0][0]
     challengecursor = dblogic.insert(cursor, "Challenges", {"Challenger":uid, "Challengee":oppid, "ColorSelection":colorid})
@@ -69,7 +69,7 @@ def showchallenges(cursor, params):
         return (b'FAILURE\r\nInvalid command\r\n\r\n')
     jointable = jointemplate%(curfield, oppfield)
     uname = serverlogic.getunamefromsession(params[1], True)
-    rescursor = dblogic.selectWithColumnsMatch(cursor, jointable, {"CurUser.Name":uname}, "Challenges.Id, OppUser.Name, ColorSelections.Name")
+    rescursor = dblogic.selectCommon(cursor, jointable, {"CurUser.Name":uname}, "Challenges.Id, OppUser.Name, ColorSelections.Name")
     data = rescursor.fetchall()
     if len(data) == 0:
         return bytes("%s\r\n\r\n"%params[0], "UTF-8")
@@ -83,7 +83,7 @@ def showactivegames(cursor, params):
                     INNER JOIN GameStatuses ON GameStatuses.Id=Games.Status'''
     uname = serverlogic.getunamefromsession(params[0], True)
     whereprep = " WHERE (WhiteUser.Name=? OR BlackUser.Name=?) AND GameStatuses.Description='In Progress'"
-    selectclause = "SELECT Games.Id, WhiteUser.Name, BlackUser.Name, Games.Turn, Games.AwaitingPromote FROM "
+    selectclause = "SELECT Games.Id, WhiteUser.Name, BlackUser.Name, SUBSTR(Games.Position,70), Games.AwaitingPromote FROM "
     rescursor = cursor.execute(selectclause + jointable + whereprep, (uname,uname))
     data = dblogic.unwrapCursor(rescursor)
     if len(data) == 0:
@@ -101,7 +101,7 @@ def respond(cursor, params):
     else:
         sessionid = params[2]
     uname = serverlogic.getunamefromsession(sessionid, True)
-    rescursor = dblogic.selectWithColumnsMatch(cursor, "Challenges INNER JOIN ColorSelections ON Challenges.ColorSelection=ColorSelections.Id", {"Challenges.Id":challengeid}, "Challenger, Challengee, ColorSelections.Name")
+    rescursor = dblogic.selectCommon(cursor, "Challenges INNER JOIN ColorSelections ON Challenges.ColorSelection=ColorSelections.Id", {"Challenges.Id":challengeid}, "Challenger, Challengee, ColorSelections.Name")
     challenge = dblogic.unwrapCursor(cursor, False)
     print(challenge)
     if challenge[2] == "White":
@@ -121,7 +121,7 @@ def respond(cursor, params):
     whiteid, blackid = challenge[1-blackindex], challenge[blackindex]
     cursor.execute("DELETE FROM Challenges WHERE Id=?", (challengeid,))
     cursor.connection.commit()
-    rescursor = dblogic.selectWithColumnsMatch(cursor, "GameSubstatuses", {"Description": "In progress"}, "Id, Superstatus")
+    rescursor = dblogic.selectCommon(cursor, "GameSubstatuses", {"Description": "In progress"}, "Id, Superstatus")
     substatus = dblogic.unwrapCursor(cursor, False)
     gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Turn": 'W', "Position": STARTPOSITION, "AwaitingPromote": 0})
     return bytes("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid), "UTF-8")
@@ -129,10 +129,10 @@ def respond(cursor, params):
 def getgamestate(cursor, params):
     gameid, sessionid = params
     uname = serverlogic.getunamefromsession(sessionid, True)
-    usercursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":uname}, "Id")
+    usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position, White")
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, getcols="Position, White")
     gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "White"])
     if (gamedata == None): #invalid game id for user
         return b"FAILURE\r\nCouldn't find game with specified Id\r\n\r\n"
@@ -142,17 +142,18 @@ def getgamestate(cursor, params):
 def move(cursor, params):
     gameid, initial, final, sessionid = params
     uname = serverlogic.getunamefromsession(sessionid, True)
-    usercursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":uname}, "Id")
+    usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position, White")
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, getcols="Position, White")
     gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "White"])
     position = gamedata['Position']
     turn = position[69]
     if (turn == 'W') != (gamedata['White'] == uid):
         return b"Success\r\nOut of turn play\r\n\r\n"
     if chesslogic.isValidMove(position, initial, final):
-        chesslogic.move(position, initial, final)
+        newposition = chesslogic.move(position, initial, final)
+        dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
         return b"Success\r\nYou found a valid move\r\n\r\n"
     return b"Failure\r\nNot yet implemented\r\n\r\n"
 

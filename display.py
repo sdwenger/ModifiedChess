@@ -226,8 +226,8 @@ def handleGetGameState(params):
     uicomponents['/homeframe'].place_forget()
     uicomponents['/gameframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
     position = params[1]
-#    position = testwrap(position)
     uicomponents['/gameframe/gameboard/color'] = params[2]
+    packsquares(params[2]=="B")
     squares = position[:64]
     for i in range(64):
         rawrow = i//8
@@ -235,8 +235,11 @@ def handleGetGameState(params):
         rawcol = i%8
         column = chr(rawcol+97)
         square = str(column)+str(row)
+        canvas = uicomponents['/gameframe/gameboard/'+square]
+        canvas.delete("all")
         if squares[i] in photoimages:
-            uicomponents['/gameframe/gameboard/'+square].create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
+            canvas.create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
+
     uicomponents['/gameframe/position'] = position
 
 functions = {

@@ -4,6 +4,7 @@ import hashlib
 import itertools
 
 baseInsertQuery = "INSERT INTO %s (%s) VALUES (%s)"
+baseUpdateQuery = "UPDATE %s SET %s WHERE %s"
 baseSelectQuery = "SELECT %s FROM %s WHERE %s"
 
 conn = None
@@ -42,7 +43,7 @@ def newUser(cursor, uname, pwd):
             raise
 
 def auth(cursor, uname, pwd):
-    res = selectWithColumnsMatch(cursor, "Users", {"Name":uname}).fetchall()
+    res = selectCommon(cursor, "Users", {"Name":uname}).fetchall()
     if (len(res) == 0):
         return False
     usertuple = res[0]
@@ -66,7 +67,19 @@ def insert(cursor, table, data):
     cursor.connection.commit()
     return cursor
     
-def selectWithColumnsMatch(cursor, table, data, getcols='*'):
+def updateCommon(cursor, table, data, rowid):
+    if len(data) == 0:
+        return cursor
+    cols = [i for i in data] #force order matching
+    setstring = ', '.join("%s=?"%i for i in cols)
+    wherestring = " Id=?"
+    valtuple = tuple(data[i] for i in cols) + (rowid,)
+    updateprep = baseUpdateQuery%(table, setstring, wherestring)
+    cursor.execute(updateprep, valtuple)
+    cursor.connection.commit()
+    return cursor
+
+def selectCommon(cursor, table, data, getcols='*'):
     cols = [i for i in data] #force order matching
     colmatchstrings = [i+'=?' for i in cols]
     columnstring = ' AND '.join(colmatchstrings)
@@ -77,7 +90,9 @@ def selectWithColumnsMatch(cursor, table, data, getcols='*'):
     cursor.execute(selectprep, valtuple)
     return cursor
 
-def selectGameWithPlayer(cursor, playerid, otherdata, getcols='*'):
+def selectGameWithPlayer(cursor, playerid, otherdata, jointables={}, getcols='*'):
+    if jointables != {}:
+        raise ValueError("selectGameWithPlayer- join select not yet implemented: %s"*jointables)
     if type(playerid) != list:
         playerid = [playerid]
     othercols = [i for i in otherdata] #force order matching

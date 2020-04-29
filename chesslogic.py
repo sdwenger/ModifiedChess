@@ -7,9 +7,9 @@ knightMoves = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (1, -2), (-1, 2), (
 
 def move(position, initial, final):
     data = list(position)
-    initIndex = squareNameToIndex(initial)
+    initialIndex = squareNameToIndex(initial)
     finalIndex = squareNameToIndex(final)
-    mover = data[initIndex]
+    mover = data[initialIndex]
     target = data[finalIndex]
     data[finalIndex] = mover
     if isAlly(mover, target):
@@ -18,20 +18,19 @@ def move(position, initial, final):
         data[initialIndex] = '-'
     #castle rights
     squares = set([initial, final])
-    if set(("e1","h1")) in final:
-        data[castleRightIndex(True, True)] = '-'
-    if set(("e1","a1")) in final:
-        data[castleRightIndex(False, True)] = '-'
-    if set(("e8","h8")) in final:
-        data[castleRightIndex(True, False)] = '-'
-    if set(("e8","a8")) in final:
-        data[castleRightIndex(False, False)] = '-'
+    castledata = (("e1","h1",True,True),("e1","a1",False,True),("e8","h8",True,False),("e8","a8",False,False))
+    for i in castledata:
+        if set((i[0],i[1])) in squares:
+            data[castleRightIndex(i[2], i[3])] = '-'
     #handle en passant removal and castling here
     #handle showing en passant availability here
     enpassant = '-'
     if mover.lower() == 'p':
         enpassant = '-'
     data[68] = enpassant
+    turn = data[69]
+    data[69] = 'B' if turn=='W' else 'W'
+    return ''.join(data)
 
 def isValidMove(position, initial, final, knownSafe=False):
     if initial == final:
@@ -105,6 +104,17 @@ def pieceValidMoves(position, square):
     if piecetype == 'k':
         if check in [CHECKMATE, STALEMATE]:
             return [[],[]]
+        prechecksquares = getnormalkingmoves(position, turn=="W", x, y)
+        safesquares = []
+        for xf,yf in prechecksquares:
+            data = list(position)
+            findex = xyToIndex(xf,yf)
+            target = data[findex]
+            data[findex],data[index] = data[index],(target if isAlly(piece,target) else "-")
+            hypstate = checkStatus(''.join(data), False)
+            if hypstate == NORMAL:
+                safesquares.append(xyToSquareName(xf,yf))
+        return [safesquares, []]
     else:
         ((xdirthreat, ydirthreat), pindistance) = pinStatus(position, x,y, piece)
         allyKing = 'K' if piece.isupper() else 'k'
@@ -121,8 +131,6 @@ def pieceValidMoves(position, square):
             return validMovesNotKingNoCheckPin(position, (x,y), piece, (kingx, kingy), (threatx, threaty), (xdirthreat, ydirthreat), pindistance)
         else:
             return validMovesNotKingNoCheckNoPin(position, piece, x,y)
-                    
-    return [["e1"],["e8"]]
 
 #valid moves for a king piece
 def validMovesKing(position, square):
@@ -167,7 +175,7 @@ def pinStatus(position, x,y, piece):
     kingindex = position.index(allyKing)
     kingx,kingy = indexToXY(kingindex)
     dx,dy = (x-kingx),(y-kingy)
-    deltas = len(set([math.fabs(i) for i in (dx,dy,0)]))
+    deltas = (set([math.fabs(i) for i in (dx,dy,0)]))
     if len(deltas) == 2: #orthogonal or diagonal from friendly king
         distance = max(deltas)
         xstep,ystep = (int(i//distance) for i in (dx,dy))
@@ -216,7 +224,7 @@ def checkStatus(position, checkTerminalConditions=True):
                     (piecetype == 'p' and distance==1 and not (0 in i) and i[1] == enemyPawnAttackDirection):
                 attacks.append(enemySquare)
     if not checkTerminalConditions:
-        return NORMAL if check==0 else CHECK if check==1 else DOUBLECHECK
+        return NORMAL if len(attacks)==0 else CHECK if len(attacks)==1 else DOUBLECHECK
 
 def isEnemy(target, attacker):
     if type(target) == bool:
@@ -285,8 +293,8 @@ def indexToSquareName(index):
 def getpawnmoves(position, iswhite, x, y):
     beforewrapper = lambda method: (lambda y,row: int(y).__getattribute__(method)(row))
     forward = []
-    firstindex, secondindex, thirdindex = xyToIndex(x,y+1), xyToIndex(x,y+2), xyToIndex(x,y+3)
-    init,back,goal,direc,enpassant,secondenpassant,semifinal,isbehind = (2,1,8,1,5,6,7,beforewrapper("__le__")) if iswhite else (7,8,1,-1,4,3,2,beforewrapper("__le__"))
+    init,back,goal,direc,enpassant,secondenpassant,semifinal,isbehind = (2,1,8,1,5,6,7,beforewrapper("__le__")) if iswhite else (7,8,1,-1,4,3,2,beforewrapper("__ge__"))
+    firstindex, secondindex, thirdindex = xyToIndex(x,y+direc), xyToIndex(x,y+2*direc), xyToIndex(x,y+3*direc)
     if position[firstindex] == '-':
         forward.append(xyToSquareName(x,y+direc))
         if isbehind(y,init) and position[secondindex] == '-':
@@ -297,11 +305,11 @@ def getpawnmoves(position, iswhite, x, y):
     if x != 1:
         leftindex = xyToIndex(x-1,y+direc)
         if isEnemy(iswhite, position[leftindex]):
-            attack.append(leftindex)
+            attack.append(indexToSquareName(leftindex))
     if x != 8:
         rightindex = xyToIndex(x+1,y+direc)
         if isEnemy(iswhite, position[rightindex]):
-            attack.append(rightindex)
+            attack.append(indexToSquareName(rightindex))
     enpassant = position[68]
     special = []
     if enpassant != '-':
@@ -342,11 +350,11 @@ def getqueenmoves(position, iswhite, x,y):
         moves += getopendirection(position, iswhite, x, y, dx, dy)
     return [moves, []]
 
-def getkingmoves(position,iswhite,x,y):
+def getnormalkingmoves(position,iswhite,x,y):
     alltargets = [(x+i,y+j) for i,j in directions]
     validtargets = [i for i in alltargets if min(i)>=1 and max(i)<=8]
-    squares = [xyToSquareName(x,y) for x,y in validtargets] #no limitations for friendly pieces- swapping is allowed
-    return [squares,[]]
+    #squares = [xyToSquareName(x,y) for x,y in validtargets] #no limitations for friendly pieces- swapping is allowed
+    return validtargets
 
 def getopendirection(position,iswhite,x,y,dx,dy):
     linedPiece, distance = findFirstOnLine(position, x, y, dx, dy)
