@@ -69,6 +69,7 @@ class GameViewer:
         self.gameid = gameid
 
     def __call__(self):
+        uicomponents['/gameframe/gameboard/gameid'] = self.gameid
         request = bytes("GETGAMESTATE\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
         receiver.sock.send(request)
 
@@ -105,6 +106,8 @@ class SquareClickHandler:
                     canvas = uicomponents['/gameframe/gameboard/%s'%i]
                     canvas.config(bg=specialcolor)
         else:
+            if self.square in (validSquares+specialSquares):
+                handlemove(uicomponents['/gameframe/gameboard/gameid'], priorSelection, self.square, receiver.sessionid)
             selectedSquare = None
             unhighlight(priorSelection)
             for i in validSquares+specialSquares:
@@ -118,6 +121,10 @@ def unhighlight(square):
     else:
         x,y = chesslogic.squareNameToXY(square)
         canvas.config(bg=getNormalColor(x,y))
+
+def handlemove(gameid, init, final, sessionid):
+    request = bytes("MOVE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, init, final, sessionid), "UTF-8")
+    receiver.sock.send(request)
 
 def rescindchallenge(challengeid, selectcolor):
     request = bytes("RESPOND\r\n%s\r\nRESCIND\r\n%s\r\n\r\n"%(challengeid, receiver.sessionid), "UTF-8")
@@ -219,6 +226,7 @@ def handleGetGameState(params):
     uicomponents['/homeframe'].place_forget()
     uicomponents['/gameframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
     position = params[1]
+#    position = testwrap(position)
     uicomponents['/gameframe/gameboard/color'] = params[2]
     squares = position[:64]
     for i in range(64):
@@ -385,6 +393,12 @@ def cancelresponse():
     uicomponents['/respondchooseframe'].place_forget()
     uicomponents['/homeframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
 
+def backtomenu():
+    uicomponents['/gameframe'].place_forget()
+    uicomponents['/homeframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
+    servershowchallenges()
+    servershowactivegames()
+
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 if ("-p" in sys.argv):
@@ -455,12 +469,20 @@ uicomponents['/gameframe/gameheader/return'] = tk.Button(uicomponents['/gamefram
 uicomponents['/gameframe/gameheader/playerslabel'] = tk.Label(uicomponents['/gameframe/gameheader'], text="White vs Black")
 uicomponents['/gameframe/gameheader/turnlabel'] = tk.Label(uicomponents['/gameframe/gameheader'], text="White to Move")
 uicomponents['/gameframe/gamecontrol'] = tk.Frame(uicomponents['/gameframe'])
+uicomponents['/gameframe/gamecontrol/back'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Back", command=backtomenu)
+uicomponents['/gameframe/gamecontrol/back'].place(x=75,y=0,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Offer Draw")
+uicomponents['/gameframe/gamecontrol/offerdraw'].place(x=75,y=50,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/claimdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Claim Draw")
+uicomponents['/gameframe/gamecontrol/claimdraw'].place(x=75,y=100,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/resign'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Resign")
+uicomponents['/gameframe/gamecontrol/resign'].place(x=75,y=150,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/claimdrawoptions'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].place(relx=0,rely=0,relwidth=.5,relheight=1)
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].place(relx=.5,rely=0,relwidth=.5,relheight=1)
+uicomponents['/gameframe/gamecontrol'].place(x=0, y=100, width=300, height=800)
 uicomponents['/gameframe/gameboard'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gameboard/squaresInitialized'] = False
 uicomponents['/gameframe/gameboard'].place(x=300, width=800, height=800, y=100)

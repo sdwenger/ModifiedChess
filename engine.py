@@ -1,5 +1,6 @@
 import serverlogic
 import dblogic
+import chesslogic
 import os
 import datetime
 import time
@@ -141,7 +142,18 @@ def getgamestate(cursor, params):
 def move(cursor, params):
     gameid, initial, final, sessionid = params
     uname = serverlogic.getunamefromsession(sessionid, True)
-    print("Attempting move: %s->%s"%(initial, final))
+    usercursor = dblogic.selectWithColumnsMatch(cursor, "Users", {"Name":uname}, "Id")
+    userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
+    uid = userdata['Id']
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Id":gameid}, "Position, White")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "White"])
+    position = gamedata['Position']
+    turn = position[69]
+    if (turn == 'W') != (gamedata['White'] == uid):
+        return b"Success\r\nOut of turn play\r\n\r\n"
+    if chesslogic.isValidMove(position, initial, final):
+        chesslogic.move(position, initial, final)
+        return b"Success\r\nYou found a valid move\r\n\r\n"
     return b"Failure\r\nNot yet implemented\r\n\r\n"
 
 def killserver(cursor, params):
