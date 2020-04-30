@@ -91,8 +91,6 @@ def selectCommon(cursor, table, data, getcols='*'):
     return cursor
 
 def selectGameWithPlayer(cursor, playerid, otherdata, jointables={}, getcols='*'):
-    if jointables != {}:
-        raise ValueError("selectGameWithPlayer- join select not yet implemented: %s"*jointables)
     if type(playerid) != list:
         playerid = [playerid]
     othercols = [i for i in otherdata] #force order matching
@@ -105,7 +103,11 @@ def selectGameWithPlayer(cursor, playerid, otherdata, jointables={}, getcols='*'
     else:
         totalcolumnstring = "%s AND (%s)"%(othercolumnstring, playerstring)
         valtuple = tuple(otherdata[i] for i in othercols) + tuple(sum(((i,i) for i in playerid), ()))
-    selectprep = baseSelectQuery%(getcols, "Games", totalcolumnstring)
+    tablestring = "Games"
+    joinstring = ' INNER JOIN '.join(["%s ON %s"%(i, jointables[i]) for i in jointables])
+    if len(joinstring) != '':
+        tablestring += " INNER JOIN "+joinstring
+    selectprep = baseSelectQuery%(getcols, tablestring, totalcolumnstring)
     cursor.execute(selectprep, valtuple)
     return cursor
 

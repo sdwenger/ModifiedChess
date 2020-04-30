@@ -1,12 +1,15 @@
 import math
+import itertools
 
 NORMAL, CHECK, DOUBLECHECK, STALEMATE, CHECKMATE = range(5)
 indeces = set(range(1,9))
 directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 knightMoves = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (1, -2), (-1, 2), (1, 2)]
 
+#move is already assumed to be valid; input here is screened through isValidMove
 def move(position, initial, final):
     data = list(position)
+    turn = data[69]
     initialIndex = squareNameToIndex(initial)
     finalIndex = squareNameToIndex(final)
     mover = data[initialIndex]
@@ -22,15 +25,60 @@ def move(position, initial, final):
     for i in castledata:
         if set((i[0],i[1])) in squares:
             data[castleRightIndex(i[2], i[3])] = '-'
-    #handle en passant removal and castling here
-    #handle showing en passant availability here
+    #begin- remove en passanted enemy pawn if applicable
+    xi, yi = indexToXY(initialIndex)
+    xf, yf = indexToXY(finalIndex)
+    if mover.lower() == 'p' and xi != xf and target == '-': #is en passant
+        shortrow = 5 if mover.isupper() else 4
+        longrow = 6 if mover.isupper() else 3
+        longindex = xyToIndex(xf, longrow)
+        index = longindex if position[longindex] != '-' else xyToIndex(xf, shortrow)
+        data[index] = '-'
+    #end- remove en passanted enemy pawn if applicable
+    
+    #begin- calculating if OPPONENT will have en passant available
     enpassant = '-'
     if mover.lower() == 'p':
-        enpassant = '-'
+        xi,yi = indexToXY(initialIndex)
+        xf,yf = indexToXY(finalIndex)
+        shortrow = 4 if mover.isupper() else 5
+        longrow = 3 if mover.isupper() else 6
+        step = math.fabs(yf-yi)
+        if step >= 2:
+            validlong = False
+            if yi in (1,8):
+                cols = [i for i in (xi-1,xi+1) if i in range(1,9)]
+                candidates = [xyToIndex(i,longrow) for i in cols]
+                pawnindeces = [i for i in candidates if (position[i].lower()=='p' and isEnemy(mover, position[i]))]
+                testenpassant = data[:]
+                testenpassant[68] = chr(xi+64)
+                testenpassant[69] = 'B' if turn=='W' else 'W'
+                validlong = any(enpassantischecksafe(''.join(testenpassant), indexToSquareName(i), xyToSquareName(xi,longrow), xyToSquareName(xf,yf)) for i in pawnindeces)
+                enpassant = chr(xi+64)
+            if not validlong:
+                cols = [i for i in (xi-1,xi+1) if i in range(1,9)]
+                candidates = [xyToIndex(i,shortrow) for i in cols]
+                pawnindeces = [i for i in candidates if (position[i].lower()=='p' and isEnemy(mover, position[i]))]
+                testenpassant = data[:]
+                testenpassant[68] = chr(xi+96)
+                testenpassant[69] = 'B' if turn=='W' else 'W'
+                validshort = any(enpassantischecksafe(''.join(testenpassant), indexToSquareName(i), xyToSquareName(xi,shortrow), xyToSquareName(xf,yf)) for i in pawnindeces)
+                enpassant = chr(xi+96)
+    #end- calculating if OPPONENT will have en passant available
     data[68] = enpassant
-    turn = data[69]
     data[69] = 'B' if turn=='W' else 'W'
     return ''.join(data)
+
+def enpassantischecksafe(position, initial, final, captured):
+    data = list(position)
+    indexi = squareNameToIndex(initial)
+    indexf = squareNameToIndex(final)
+    indexc = squareNameToIndex(captured)
+    mover = data[indexi]
+    data[indexc] = '-'
+    data[indexi] = '-'
+    data[indexf] = mover
+    return len(checkStatus(''.join(data), False)) == 0
 
 def isValidMove(position, initial, final, knownSafe=False):
     if initial == final:
@@ -56,7 +104,16 @@ def isValidMove(position, initial, final, knownSafe=False):
     distance = max(deltas)
     if movetype == 'k':
         if distance == 1:
-            return True #one square, king
+            if knownSafe:
+                return True
+            else:
+                testdata = list(position[:])
+                indexi = squareNameToIndex(initial)
+                indexf = squareNameToIndex(final)
+                captured = testdata[indexf]
+                testdata[indexf] = testdata[indexi]
+                testdata[indexi] = captured if isAlly(mover, captured) else '-'
+                return len(checkStatus(''.join(testdata), False)) == 0
         elif distance == 2 and dy == 0:
             return validateCastle(position, xi, yi, xf, yf)
     if (movetype, 0 in deltas) in [('r', False), ('b', True)]:
@@ -76,11 +133,11 @@ def isValidMove(position, initial, final, knownSafe=False):
             if xf != numcolumn:
                 return False #wrong column for en passant
             shortrow = 5 if turn == 'W' else 4
-            if shortrow != yf: #not a short en passant
+            if shortrow != yi: #not a short en passant
                 if not enpassantcolumn.upper():
                     return False #only short en passant available
-                shortrow = 6 if turn == 'W' else 3
-                if longrow != yf:
+                longrow = 6 if turn == 'W' else 3
+                if longrow != yi:
                     return False #not an attempted en passant
     #at this point, the following has been ruled out
     xstep, ystep = (i//distance for i in (dx,dy))
@@ -88,7 +145,15 @@ def isValidMove(position, initial, final, knownSafe=False):
         xmid, ymid = (xi+xstep*i, yi+ystep*i)
         if position[xyToIndex(xmid, ymid)] != '-':
             return False #obstruction
-    return True
+    if knownSafe:
+        return True
+    testdata = list(position[:])
+    indexi = squareNameToIndex(initial)
+    indexf = squareNameToIndex(final)
+    captured = testdata[indexf]
+    testdata[indexf] = testdata[indexi]
+    testdata[indexi] = captured if isAlly(mover, captured) else '-'
+    return len(checkStatus(''.join(testdata), False)) == 0
 
 def pieceValidMoves(position, square):
     turn = position[-1]
@@ -100,7 +165,8 @@ def pieceValidMoves(position, square):
     if (turn=="W") != (piece.isupper()):
         return None #out of turn piece
     piecetype = piece.lower()
-    check = checkStatus(position)
+    threats = checkStatus(position)
+    check = threats if (type(threats) == int) else NORMAL if len(threats)==0 else CHECK if len(threats)==1 else DOUBLECHECK
     if piecetype == 'k':
         if check in [CHECKMATE, STALEMATE]:
             return [[],[]]
@@ -112,11 +178,11 @@ def pieceValidMoves(position, square):
             target = data[findex]
             data[findex],data[index] = data[index],(target if isAlly(piece,target) else "-")
             hypstate = checkStatus(''.join(data), False)
-            if hypstate == NORMAL:
+            if len(hypstate) == 0:
                 safesquares.append(xyToSquareName(xf,yf))
         return [safesquares, []]
     else:
-        ((xdirthreat, ydirthreat), pindistance) = pinStatus(position, x,y, piece)
+        ((pxta, pyta), pindistance) = pinStatus(position, x,y, piece) #pxta is for "pin x-direction threat arrow"
         allyKing = 'K' if piece.isupper() else 'k'
         kingindex = position.index(allyKing)
         kingx,kingy = indexToXY(kingindex)
@@ -125,12 +191,30 @@ def pieceValidMoves(position, square):
         elif check == CHECK and pindistance != 0: #pinned pieces can't help with check
             return [[],[]]
         elif check == CHECK and pindistance == 0:
-            return validMovesNotKingCheckNoPin(position, square, kingsquare, threatsquare)
+            attacksquare = threats[0]
+            attackx, attacky = squareNameToXY(attacksquare)
+            prelim = validMovesNotKingCheckNoPin(position, square, (kingx, kingy), (attackx, attacky))
         elif pindistance != 0:
-            threatx, threaty = x+xdirthreat, y+ydirthreat
-            return validMovesNotKingNoCheckPin(position, (x,y), piece, (kingx, kingy), (threatx, threaty), (xdirthreat, ydirthreat), pindistance)
+            pxtp, pytp = x+pxta, y+pyta #pxtp is "pin x-direction threat position"
+            prelim = validMovesNotKingNoCheckPin(position, (x,y), piece, (kingx, kingy), (pxtp, pytp), (pxta, pyta), pindistance)
         else:
-            return validMovesNotKingNoCheckNoPin(position, piece, x,y)
+            prelim = validMovesNotKingNoCheckNoPin(position, piece, x,y)
+        enpassant = position[68]
+        if piecetype == 'p' and enpassant != '-':
+            enpassantlong = enpassant.isupper()
+            enpassantcolumn = (ord(enpassant.lower())-96)
+            if math.fabs(enpassantcolumn-x) == 1:
+                shortrow = 5 if turn == 'W' else 4
+                longrow = 6 if turn == 'W' else 3
+                direc = 1 if turn == 'W' else -1
+                validenpassant = (y==shortrow) or (enpassantlong and y==longrow)
+                longindex = xyToIndex(enpassantcolumn, longrow)
+                index = longindex if position[longindex] != '-' else xyToIndex(enpassantcolumn, shortrow)
+                target = indexToSquareName(index)
+                dest = xyToSquareName(enpassantcolumn, y+direc)
+                if enpassantischecksafe(position, square, dest, target):
+                    prelim[1].append(dest)
+        return prelim
 
 #valid moves for a king piece
 def validMovesKing(position, square):
@@ -138,7 +222,21 @@ def validMovesKing(position, square):
 
 #valid moves for non-pinned non-king when king is in check
 def validMovesNotKingCheckNoPin(position, square, kingsquare, threatsquare):
-    pass
+    kingx, kingy = kingsquare
+    threatx, threaty = threatsquare
+    deltas = set((math.fabs(threatx-kingx), math.fabs(threaty-kingy), 0))
+    if len(deltas) == 3:
+        targetxys = [threatsquare] #knight threat; can only be suppressed by capture
+    else:
+        distance = int(max(deltas))
+        xstep = (kingx-threatx)//distance
+        ystep = (kingy-threaty)//distance
+        xvals = [kingx]*distance if xstep==0 else [i for i in range(threatx, kingx, xstep)] #threatx first neatly includes capturing the threat while excluding landing on the king
+        yvals = [kingy]*distance if ystep==0 else [i for i in range(threaty, kingy, ystep)]
+        targetxys = list(itertools.zip_longest(xvals, yvals))
+    targets = [xyToSquareName(i,j) for i,j in targetxys]
+    valids = [i for i in targets if isValidMove(position, square, i, True)]
+    return [valids, []]
 
 #valid moves for pinned piece when king is not in check
 def validMovesNotKingNoCheckPin(position, square, piece, kingsquare, threatsquare, pindirection, pindistance):
@@ -154,7 +252,8 @@ def validMovesNotKingNoCheckPin(position, square, piece, kingsquare, threatsquar
     squaresInPin = getopendirection(position, isWhite, square[0], square[1], pindirection[0], pindirection[1]) + \
                     getopendirection(position, isWhite, square[0], square[1], -pindirection[0], -pindirection[1])
     if piecetype == 'p':
-        return [[i for i in squaresInPin if isValidMove(position, square, i, True)],[]]
+        return [[i for i in squaresInPin if isValidMove(position, xyToSquareName(square[0], square[1]), i, True)],[]]
+    return [squaresInPin,[]]
 
 #valid moves normally- not pinned and no check
 def validMovesNotKingNoCheckNoPin(position, piece, x,y):
@@ -178,15 +277,15 @@ def pinStatus(position, x,y, piece):
     deltas = (set([math.fabs(i) for i in (dx,dy,0)]))
     if len(deltas) == 2: #orthogonal or diagonal from friendly king
         distance = max(deltas)
-        xstep,ystep = (int(i//distance) for i in (dx,dy))
+        xstep,ystep = (int(i//distance) for i in (dx,dy)) #king to current-piece line, or current-piece to threat line
         clearToKing = clearLine(position, x, y, kingx, kingy)
         if clearToKing:
-            opposite, distance = findFirstOnLine(position, x, y, -xstep, -ystep) #opposite direction from king
+            opposite, distance = findFirstOnLine(position, x, y, xstep, ystep)
             if isEnemy(allyKing, opposite):
                 threatdirection = (-xstep, -ystep)
                 piecetype = opposite.lower()
                 nonqueenthreat = 'r' if 0 in threatdirection else 'b'
-                if piecetype in ['q', nonqueenthreat]:
+                if piecetype in ['q', nonqueenthreat]: 
                     return (threatdirection, distance)
     return ((0,0), 0)
     
@@ -224,7 +323,9 @@ def checkStatus(position, checkTerminalConditions=True):
                     (piecetype == 'p' and distance==1 and not (0 in i) and i[1] == enemyPawnAttackDirection):
                 attacks.append(enemySquare)
     if not checkTerminalConditions:
-        return NORMAL if len(attacks)==0 else CHECK if len(attacks)==1 else DOUBLECHECK
+        return attacks
+    #processing to determine checkmate/stalemate
+    return attacks
 
 def isEnemy(target, attacker):
     if type(target) == bool:
@@ -255,7 +356,7 @@ def findFirstOnLine(position, startx, starty, dx, dy):
     return (occupant, distance)
 
 def clearLine(position, x1, y1, x2, y2):
-    dx, dy = (0 if x1==x2 else -1 if x1 < x2 else 1, 0 if y1==y2 else -1 if y1 < y2 else 1)
+    dx, dy = (0 if x1==x2 else -1 if x1 > x2 else 1, 0 if y1==y2 else -1 if y1 > y2 else 1)
     if len(set([math.fabs(x1-x2), math.fabs(y1-y2), 0])) > 2:
         raise ValueError("Line checking requires orthogonal or diagonal direction")
     curx, cury = x1+dx, y1+dy
@@ -299,7 +400,7 @@ def getpawnmoves(position, iswhite, x, y):
         forward.append(xyToSquareName(x,y+direc))
         if isbehind(y,init) and position[secondindex] == '-':
             forward.append(xyToSquareName(x,y+2*direc))
-            if isbehind(y,back) and position[secondindex] == '-':
+            if isbehind(y,back) and position[thirdindex] == '-':
                 forward.append(xyToSquareName(x,y+3*direc))
     attack = []
     if x != 1:

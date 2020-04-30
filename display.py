@@ -228,7 +228,36 @@ def handleGetGameState(params):
     position = params[1]
     uicomponents['/gameframe/gameboard/color'] = params[2]
     packsquares(params[2]=="B")
+    whitename = params[3]
+    blackname = params[4]
+    uicomponents['/gameframe/gameheader/playersstring'].set("%s vs %s"%(whitename, blackname))
     squares = position[:64]
+    turn = position[69]
+    setboard(squares, turn)
+    uicomponents['/gameframe/position'] = position
+
+def handleNotify(params):
+    notification = params[0]
+    notifparams = params[1:]
+    if notification=="OPPMOVE":
+        gameid, newposition = notifparams
+        if '/gameframe/gameboard/gameid' in uicomponents and gameid == uicomponents['/gameframe/gameboard/gameid']:
+            squares = newposition[:64]
+            turn = newposition[69]
+            setboard(squares, turn)
+            uicomponents['/gameframe/position'] = newposition
+
+def handleMove(params):
+    if params[0] == "SUCCESS":
+        gameid, newposition = params[1:]
+        if gameid == uicomponents['/gameframe/gameboard/gameid']:
+            squares = newposition[:64]
+            turn = newposition[69]
+            setboard(squares, turn)
+            uicomponents['/gameframe/position'] = newposition
+
+def setboard(squares, turn):
+    print(chesslogic.checkStatus(squares+'-----'+turn, False))
     for i in range(64):
         rawrow = i//8
         row = (rawrow)+1
@@ -239,15 +268,16 @@ def handleGetGameState(params):
         canvas.delete("all")
         if squares[i] in photoimages:
             canvas.create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
-
-    uicomponents['/gameframe/position'] = position
+    uicomponents['/gameframe/gameheader/turnstring'].set("%s to move."%("White" if turn=="W" else "Black"))
 
 functions = {
     "LOGIN" : handleLogin,
     "SHOWCHALLENGES" : handleShowChallenges,
     "SHOWACTIVEGAMES" : handleShowActiveGames,
     "NEWCHALLENGE" : handleNewChallenge,
-    "GETGAMESTATE" : handleGetGameState
+    "GETGAMESTATE" : handleGetGameState,
+    "NOTIFY" : handleNotify,
+    "MOVE" : handleMove,
 }
 
 def sockExtract(sock, bufsize):
@@ -324,9 +354,9 @@ def killcommand():
 
 def servershowchallenges():
     receiver.sock.send(bytes('SHOWCHALLENGES\r\nOUT\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
-    time.sleep(.5)
+    #time.sleep(.5)
     receiver.sock.send(bytes('SHOWCHALLENGES\r\nIN\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
-    time.sleep(.5)
+    #time.sleep(.5)
 
 def servershowactivegames():
     receiver.sock.send(bytes('SHOWACTIVEGAMES\r\n%s\r\n\r\n'%(receiver.sessionid), "UTF-8"))
@@ -468,11 +498,15 @@ uicomponents['/respondchooseframe/cancel'].place(relx=.5, relwidth=.32, rely=.93
 
 uicomponents['/gameframe'] = tk.Frame(uicomponents['/'])
 uicomponents['/gameframe/gameheader'] = tk.Frame(uicomponents['/gameframe'])
-uicomponents['/gameframe/gameheader/return'] = tk.Button(uicomponents['/gameframe/gameheader'], text="Back to menu")
-uicomponents['/gameframe/gameheader/playerslabel'] = tk.Label(uicomponents['/gameframe/gameheader'], text="White vs Black")
-uicomponents['/gameframe/gameheader/turnlabel'] = tk.Label(uicomponents['/gameframe/gameheader'], text="White to Move")
+uicomponents['/gameframe/gameheader/playersstring'] = tk.StringVar()
+uicomponents['/gameframe/gameheader/turnstring'] = tk.StringVar()
+uicomponents['/gameframe/gameheader/playerslabel'] = tk.Label(uicomponents['/gameframe/gameheader'], textvariable=uicomponents['/gameframe/gameheader/playersstring'])
+uicomponents['/gameframe/gameheader/playerslabel'].place(relx=0, rely=0, relwidth=1, relheight=.5)
+uicomponents['/gameframe/gameheader/turnlabel'] = tk.Label(uicomponents['/gameframe/gameheader'], textvariable=uicomponents['/gameframe/gameheader/turnstring'])
+uicomponents['/gameframe/gameheader/turnlabel'].place(relx=0, rely=.5, relwidth=1, relheight=.5)
+uicomponents['/gameframe/gameheader'].place(x=0, y=0, width=1400, height=100)
 uicomponents['/gameframe/gamecontrol'] = tk.Frame(uicomponents['/gameframe'])
-uicomponents['/gameframe/gamecontrol/back'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Back", command=backtomenu)
+uicomponents['/gameframe/gamecontrol/back'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Return to Menu", command=backtomenu)
 uicomponents['/gameframe/gamecontrol/back'].place(x=75,y=0,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Offer Draw")
 uicomponents['/gameframe/gamecontrol/offerdraw'].place(x=75,y=50,width=135,height=40)

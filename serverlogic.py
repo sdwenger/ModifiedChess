@@ -5,20 +5,49 @@ import datetime
 import random
 import chesslogic
 
-sessions = {}
+sessionsdata = {}
+unametosessions = {}
 
-def getunamefromsession(sessionid, refresh=False):
-    if not sessionid in sessions:
+def getunamefromsession(sessionid, connhandler, refresh=False):
+    if not sessionid in sessionsdata:
         return None
-        
+
+    session = sessionsdata[sessionid]
+    if session.isExpired():
+        del sessionsdata[sessionid]
+        return None
+
+    session.addconnection(connhandler)
     if refresh:
-        sessions[sessionid][1] = datetime.datetime.now() + datetime.timedelta(0,1800)
+        session.refresh()
 
-    return sessions[sessionid][0]
+    return sessionsdata[sessionid].uname
 
-def pushsessionid(sessionid, uname):
-    if not sessionid in sessions:
-        sessions[sessionid] = [uname, datetime.datetime.now() + datetime.timedelta(0,1800)]
+def notifyuser(uname, data):
+    if not uname in unametosessions:
+        return None
+    sessions = unametosessions[uname]
+    for i in sessions:
+        session = sessionsdata[i]
+        if session.isExpired():
+            sessions.remove(i)
+        else:
+            for j in session.connections:
+                try:
+                    j.conn.send(data)
+                except BrokenPipeError:
+                    j.close()
+
+def pushsessionid(sessionid, uname, connhandler):
+    if not sessionid in sessionsdata:
+        session = Session(sessionid, uname)
+        session.addconnection(connhandler)
+        sessionsdata[sessionid] = session
+        if not uname in unametosessions:
+            unametosessions[uname] = []
+        unametosessions[uname].append(sessionid)
+        return True
+    return False
 
 def sockExtract(sock, bufsize):
     try:
@@ -38,6 +67,30 @@ def sockExtract(sock, bufsize):
         return data
     except OSError:
         return 2
+
+class Session:
+    def __init__(self, sessionid, uname, maxage=1800):
+        self.sessionid, self.uname = sessionid, uname
+        self.expiration = datetime.datetime.now() + datetime.timedelta(0,maxage)
+        self.connections = []
+
+    def refresh(self, exptime=1800):
+        self.expiration = max(self.expiration, datetime.datetime.now() + datetime.timedelta(0,exptime))
+
+    def isExpired(self):
+        return datetime.datetime.now() >= self.expiration
+
+    def addconnection(self, conn):
+        if not conn in self.connections:
+            self.connections.append(conn)
+            return True
+        return False
+
+    def removeconnection(self, conn):
+        if conn in self.connections:
+            self.connections.remove(conn)
+            return True
+        return False
 
 class ConnectionHandler(threading.Thread):
     def __init__(self, sock, conn, addr, handler=None):
@@ -83,8 +136,12 @@ class ConnectionHandler(threading.Thread):
         
     def close(self):
         self.closed = True
-        self.conn.close()
+        try:
+            self.conn.close()
+        except:
+            pass
         allconnections.remove(self)
+        [sessionsdata[i].removeconnection(self) for i in sessionsdata]
 
 class ServerThread(threading.Thread):
     def __init__(self, host, port, connectionHandler=None):
