@@ -122,3 +122,8 @@ def unwrapCursor(cursor, asList=True, keyset=None):
     else:
         formatted = data
     return formatted if asList else formatted[0]
+    
+def getColsFromTable(cursor, table):
+    tablecursor = cursor.execute("PRAGMA table_info(%s)"%table)
+    data = tablecursor.fetchall()
+    return [i[1] for i in data]

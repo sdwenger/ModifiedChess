@@ -1,38 +1,64 @@
 import sqlite3
+import sys
+import dblogic
+from collections import OrderedDict
+
+
+metadatastrings = OrderedDict({
+        "Users":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(40) UNIQUE, HashPass BLOB, Salt BLOB)",
+        "ColorSelections":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(10))",
+        "GameStatuses":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Description VARCHAR(20), WhiteHalfPoints INT, BlackHalfPOints INT)",
+        "GameSubstatuses":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Description VARCHAR(40), Superstatus INTEGER, FOREIGN KEY(Superstatus) REFERENCES GameStatuses(Id))"
+        })
+datastrings = OrderedDict({
+        "Challenges":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Challenger INTEGER, Challengee INTEGER, ColorSelection INTEGER, FOREIGN KEY(Challenger) REFERENCES Users(Id), FOREIGN KEY(Challengee) REFERENCES Users(Id),  FOREIGN KEY(ColorSelection) REFERENCES ColorSelections(Id))",
+        "Games":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, White INTEGER, Black INTEGER, Status INTEGER, Substatus INTEGER, Position CHAR(70), AwaitingPromote BIT(1), ClaimFaultPlayer CHAR(1), ClaimFaults INTEGER, OfferRecipient INTEGER, FiftyMoveCount INTEGER, FOREIGN KEY(Black) REFERENCES Users(Id), FOREIGN KEY(White) REFERENCES Users(Id), FOREIGN KEY (Status) REFERENCES GameStatuses(Id), FOREIGN KEY (Substatus) REFERENCES GameSubstatuses(Id), FOREIGN KEY(OfferRecipient) REFERENCES Users(Id))",
+        "Moves":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, SqFrom CHAR(2), SqTo CHAR(2), Captured CHAR(1), isEnPassant BIT(1), Player CHAR(1), Piece CHAR(1), Sequence INT, Game INTEGER, PosBefore CHAR(70), PosAfter CHAR(70), FOREIGN KEY(Game) REFERENCES Games(Id))",
+        "Promotions":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Move INTEGER NewType CHAR(1), FOREIGN KEY(Move) REFERENCES Moves(Id))"
+        })
 
 def connect():
     return sqlite3.connect("chessdata.db")
 
-def dropAll(conn=None):
+def retrievedata(includemetadata, conn=None):
     if conn == None:
         conn = connect()
-    commands = [
-        "DROP TABLE IF EXISTS Promotions",
-        "DROP TABLE IF EXISTS Moves",
-        "DROP TABLE IF EXISTS Games",
-        "DROP TABLE IF EXISTS Challenges",
-        "DROP TABLE IF EXISTS GameSubstatuses",
-        "DROP TABLE IF EXISTS GameStatuses",
-        "DROP TABLE IF EXISTS ColorSelections",
-        "DROP TABLE IF EXISTS Users"
-    ];
-    [(conn.execute(i) and None) for i in commands][0]
+    tables = list(datastrings) + (list(metadatastrings) if includemetadata else [])
+    data = {}
+    cursor = conn.cursor()
+    for i in tables:
+        cols = dblogic.getColsFromTable(cursor, i)
+        rowscursor = dblogic.selectCommon(cursor, i, {})
+        alldata = unwrapCursor(rowscursor, True, cols)
+        data[i] = alldata
+    return data
+        
+def replacedata(includemetadata, data, conn=None):
+    if conn == None:
+        conn = connect()
+    tables = list(datastrings) + (list(metadatastrings) if includemetadata else [])
+    cursor = conn.cursor()
+    for i in tables:
+        rows = data[i]
+        if len(rows) == 0:
+            continue
+        oldcols = list(rows[0])
+        newcols = dblogic.getColsFromTable(cursor, i)
+        [dblogic.insert(cursor, i, j) for j in rows]
 
-def initTables(conn=None):
+def dropAll(includemetadata, conn=None):
     if conn == None:
         conn = connect()
-    commands = [
-        "CREATE TABLE IF NOT EXISTS Users (Id INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(40) UNIQUE, HashPass BLOB, Salt BLOB)",
-        "CREATE TABLE IF NOT EXISTS ColorSelections (Id INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(10))",
-        "CREATE TABLE IF NOT EXISTS GameStatuses (Id INTEGER PRIMARY KEY AUTOINCREMENT, Description VARCHAR(20), WhiteHalfPoints INT, BlackHalfPOints INT)",
-        "CREATE TABLE IF NOT EXISTS GameSubstatuses (Id INTEGER PRIMARY KEY AUTOINCREMENT, Description VARCHAR(40), Superstatus INTEGER, FOREIGN KEY(Superstatus) REFERENCES GameStatuses(Id))",
-        "CREATE TABLE IF NOT EXISTS Challenges (Id INTEGER PRIMARY KEY AUTOINCREMENT, Challenger INTEGER, Challengee INTEGER, ColorSelection INTEGER, FOREIGN KEY(Challenger) REFERENCES Users(Id), FOREIGN KEY(Challengee) REFERENCES Users(Id),  FOREIGN KEY(ColorSelection) REFERENCES ColorSelections(Id))",
-        "CREATE TABLE IF NOT EXISTS Games (Id INTEGER PRIMARY KEY AUTOINCREMENT, White INTEGER, Black INTEGER, Status INTEGER, Substatus INTEGER, Position CHAR(70), AwaitingPromote BIT(1), ClaimFaultPlayer CHAR(1), ClaimFaults INTEGER, OfferRecipient INTEGER, FiftyMoveCount INTEGER, FOREIGN KEY(Black) REFERENCES Users(Id), FOREIGN KEY(White) REFERENCES Users(Id), FOREIGN KEY (Status) REFERENCES GameStatuses(Id), FOREIGN KEY (Substatus) REFERENCES GameSubstatuses(Id), FOREIGN KEY(OfferRecipient) REFERENCES Users(Id))",
-        "CREATE TABLE IF NOT EXISTS Moves (Id INTEGER PRIMARY KEY AUTOINCREMENT, SqFrom CHAR(2), SqTo CHAR(2), Captured CHAR(1), isEnPassant BIT(1), Player CHAR(1), Piece CHAR(1), Sequence INT, Game INTEGER, PosBefore CHAR(70), PosAfter CHAR(70), FOREIGN KEY(Game) REFERENCES Games(Id))",
-        "CREATE TABLE IF NOT EXISTS Promotions (Id INTEGER PRIMARY KEY AUTOINCREMENT, Move INTEGER NewType CHAR(1), FOREIGN KEY(Move) REFERENCES Moves(Id))"
-    ];
-    [(conn.execute(i) and None) for i in commands][0]
-    initMetadata(conn)
+    [conn.execute("DROP TABLE IF EXISTS %s"%i) for i in reversed(datastrings)]
+    if includemetadata:
+        [conn.execute("DROP TABLE IF EXISTS %s"%i) for i in reversed(metadatastrings)]
+
+def initTables(includemetadata, conn=None):
+    if conn == None:
+        conn = connect()
+    if includemetadata:
+        [conn.execute("CREATE TABLE IF NOT EXISTS %s %s"%(i, metadatastrings[i])) for i in reversed(metadatastrings)]
+    [conn.execute("CREATE TABLE IF NOT EXISTS %s %s"%(i, datastrings[i])) for i in reversed(datastrings)]
     
 def initMetadata(conn):
     commands = [
@@ -68,16 +94,20 @@ def initMetadata(conn):
         else:
             query = conn.execute(i)
             
-def reset(conn=None):
-    if (conn==None):
-        conn = connect()
-    dropAll(conn)
-    initTables(conn)
+def reset(includemetadata, firstrun, conn=None):
+    if not firstrun:
+        olddata = retrievedata(includemetadata)
+        if (conn==None):
+            conn = connect()
+        dropAll(includemetadata, conn)
+    initTables(includemetadata or firstrun, conn)
+    if firstrun:
+        initMetadata(conn)
+    else:
+        replacedata(includemetadata, olddata)
     conn.commit()
     
 if __name__=='__main__':
-    import sys
-    if '-r' in sys.argv:
-        reset()
-    else:
-        initTables()
+    includemetadata = '-m' in sys.argv
+    firstrun = '-f' in sys.argv
+    reset(includemetadata, firstrun)

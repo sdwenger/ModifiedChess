@@ -38,7 +38,7 @@ def newuser(cursor, params, connhandler):
     pwd = params[1]
     retcode = dblogic.newUser(cursor, uname, pwd)
     if retcode == 0:
-        return login(params)
+        return login(cursor, params, connhandler)
     elif retcode == 1:
         return bytewrap('FAILURE\r\nUsername %s already in use.\r\n\r\n'%uname)
 
@@ -61,6 +61,7 @@ def newchallenge(cursor, params, connhandler):
     colorid = colordata[0][0]
     challengecursor = dblogic.insert(cursor, "Challenges", {"Challenger":uid, "Challengee":oppid, "ColorSelection":colorid})
     challengeid = challengecursor.lastrowid
+    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nNEWCHALLENGE\r\n%s\r\n%s\r\n%s\r\n\r\n"%(uname, challengeid, colorselection)))
     return bytewrap("SUCCESS\r\n%s\r\n\r\n"%challengeid)
 
 def showchallenges(cursor, params, connhandler):
@@ -109,30 +110,48 @@ def respond(cursor, params, connhandler):
     else:
         sessionid = params[2]
     uname = serverlogic.getunamefromsession(sessionid, connhandler, True)
-    rescursor = dblogic.selectCommon(cursor, "Challenges INNER JOIN ColorSelections ON Challenges.ColorSelection=ColorSelections.Id", {"Challenges.Id":challengeid}, "Challenger, Challengee, ColorSelections.Name")
-    challenge = dblogic.unwrapCursor(cursor, False)
-    print(challenge)
-    if challenge[2] == "White":
-        blackindex = 1
-    elif challenge[2] == "Black":
-        blackindex = 0
-    elif challenge[2] == "Random":
-        blackindex = random.randrange(2)
-    elif challenge[2] == "Opponent":
-        if colorselection == "WHITE":
-            blackindex = 0
-        elif colorselection == "BLACK":
+    rescursor = dblogic.selectCommon(cursor, "Challenges INNER JOIN ColorSelections ON Challenges.ColorSelection=ColorSelections.Id INNER JOIN (SELECT Id, Name FROM Users) AS ChallengerUser ON Challenges.Challenger=ChallengerUser.Id INNER JOIN (SELECT Id, Name FROM Users) AS ChallengeeUser ON Challenges.Challengee=ChallengeeUser.Id", {"Challenges.Id":challengeid}, "Challenger, Challengee, ColorSelections.Name, ChallengerUser.Name, ChallengeeUser.Name")
+    challengedata = dblogic.unwrapCursor(rescursor, False)
+    if responsetype == "ACCEPT":
+        if uname != challengedata[4]:
+           return bytewrap("Failure\r\nNot your challenge to accept.\r\n\r\n")
+        if challengedata[2] == "White":
             blackindex = 1
-        elif colorselection == "RANDOM":
+        elif challengedata[2] == "Black":
+            blackindex = 0
+        elif challengedata[2] == "Random":
             blackindex = random.randrange(2)
-            
-    whiteid, blackid = challenge[1-blackindex], challenge[blackindex]
-    cursor.execute("DELETE FROM Challenges WHERE Id=?", (challengeid,))
-    cursor.connection.commit()
-    rescursor = dblogic.selectCommon(cursor, "GameSubstatuses", {"Description": "In progress"}, "Id, Superstatus")
-    substatus = dblogic.unwrapCursor(cursor, False)
-    gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Turn": 'W', "Position": STARTPOSITION, "AwaitingPromote": 0})
-    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid))
+        elif challengedata[2] == "Opponent":
+            if colorselection == "WHITE":
+                blackindex = 0
+            elif colorselection == "BLACK":
+                blackindex = 1
+            elif colorselection == "RANDOM":
+                blackindex = random.randrange(2)
+                
+        whiteid, blackid = challengedata[1-blackindex], challengedata[blackindex]
+        whitename, blackname = (challengedata[challengedata.index(i)+3] for i in (whiteid, blackid))
+        cursor.execute("DELETE FROM Challenges WHERE Id=?", (challengeid,))
+        cursor.connection.commit()
+        rescursor = dblogic.selectCommon(cursor, "GameSubstatuses", {"Description": "In progress"}, "Id, Superstatus")
+        substatus = dblogic.unwrapCursor(rescursor, False)
+        gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Position": STARTPOSITION, "AwaitingPromote": 0})
+        serverlogic.notifyuser(challengedata[3], bytewrap("NOTIFY\r\nACCEPTCHALLENGE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid, whitename, blackname)))
+        return bytewrap("SUCCESS\r\nACCEPT\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid, whitename, blackname))
+    elif responsetype == "REJECT":
+        if uname != challengedata[4]:
+           return bytewrap("Failure\r\nNot your challenge to reject.\r\n\r\n")
+        cursor.execute("DELETE FROM Challenges WHERE Id=?", (challengeid,))
+        cursor.connection.commit()
+        serverlogic.notifyuser(challengedata[3], bytewrap("NOTIFY\r\nREJECTCHALLENGE\r\n%s\r\n\r\n"%(challengeid)))
+        return bytewrap("SUCCESS\r\nREJECT\r\n%s\r\n\r\n"%challengeid)
+    elif responsetype == "RESCIND":
+        if uname != challengedata[3]:
+           return bytewrap("Failure\r\nNot your challenge to rescind.\r\n\r\n")
+        cursor.execute("DELETE FROM Challenges WHERE Id=?", (challengeid,))
+        cursor.connection.commit()
+        serverlogic.notifyuser(challengedata[4], bytewrap("NOTIFY\r\nRESCINDCHALLENGE\r\n%s\r\n\r\n"%(challengeid)))
+        return bytewrap("SUCCESS\r\nRESCIND\r\n%s\r\n\r\n"%challengeid)
     
 def getgamestate(cursor, params, connhandler):
     gameid, sessionid = params

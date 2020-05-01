@@ -44,11 +44,10 @@ def handleLogin(params):
         receiver.sessionid = params[2]
         uicomponents['/homeframe/usernamevar'].set(receiver.uname)
         uicomponents['/login'].pack_forget()
+        uicomponents['/newuser'].pack_forget()
         uicomponents['/homeframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
         servershowchallenges()
         servershowactivegames()
-        if '-k' in sys.argv:
-            killcommand()
 
 def writeout(isOut, oppname, selection):
     if selection == "Random":
@@ -222,6 +221,59 @@ def handleNewChallenge(params):
     servershowchallenges()
     servershowactivegames()
 
+def handleRespond(params):
+    if params[0] == "SUCCESS":
+        response = params[1]
+        notifparams = params[2:]
+        if response=="ACCEPT":
+            chooseframe = uicomponents['/respondchooseframe']
+            if chooseframe.winfo_ismapped() != 0:
+                chooseframe.place_forget()
+                uicomponents['/homeframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
+            challengeid, gameid, whitename, blackname = notifparams
+            challengepath = '/homeframe/inchallenges'
+            challengecontainers = uicomponents[challengepath+'frames']
+            challengecontainer = challengecontainers[challengeid]
+            oldy = challengecontainer.winfo_y()
+            [challengecontainers[i].place(relx=0, relwidth=1, y=challengecontainers[i].winfo_y()-40, height=40) for i in challengecontainers if challengecontainers[i].winfo_y() > oldy]
+            challengecontainer.place_forget()
+            del challengecontainers[challengeid]
+            
+            gamepath = '/homeframe/activegames'
+            gamecontainer = tk.Frame(uicomponents[gamepath])
+            uicomponents[gamepath+'frames'][gameid] = gamecontainer
+            label = tk.Label(gamecontainer, text="%s vs. %s"%(whitename, blackname))
+            label.place(relx=0, relwidth=1, rely=0, relheight=.5)
+
+            viewer = tk.Button(gamecontainer, text="View", command=GameViewer(gameid) )
+            viewer.place(relx=.35, relwidth=.3, rely=.5, relheight=.5)
+
+            isactiveplayer = receiver.uname == whitename
+            possessive = "Your" if isactiveplayer else ("%s's"%whitename)
+            turnlabel = "%s move." % possessive
+
+            uicomponents[gamepath+'viewbuttons'][gameid] = viewer
+            gamecontainer.place(relx=0, relwidth=1, y=len(uicomponents[gamepath+'frames'])*40, height=40)
+        elif response=="REJECT":
+            challengeid, = notifparams
+            path = '/homeframe/inchallenges'
+            containers = uicomponents[path+'frames']
+            container = containers[challengeid]
+            oldy = container.winfo_y()
+            [containers[i].place(relx=0, relwidth=1, y=containers[i].winfo_y()-40, height=40) for i in containers if containers[i].winfo_y() > oldy] #bring up everything below
+            container.place_forget()
+            del containers[challengeid]
+        elif response=="RESCIND":
+            challengeid, = notifparams
+            path = '/homeframe/outchallenges'
+            containers = uicomponents[path+'frames']
+            container = containers[challengeid]
+            oldy = container.winfo_y()
+            [containers[i].place(relx=0, relwidth=1, y=containers[i].winfo_y()-40, height=40) for i in containers if containers[i].winfo_y() > oldy] #bring up everything below
+            container.place_forget()
+            containers[challengeid]
+            del containers[challengeid]
+
 def handleGetGameState(params):
     uicomponents['/homeframe'].place_forget()
     uicomponents['/gameframe'].place(relx=0, rely=0, relheight=1, relwidth=1)
@@ -246,6 +298,66 @@ def handleNotify(params):
             turn = newposition[69]
             setboard(squares, turn)
             uicomponents['/gameframe/position'] = newposition
+    elif notification=="RESCINDCHALLENGE":
+        challengeid, = notifparams
+        path = '/homeframe/inchallenges'
+        containers = uicomponents[path+'frames']
+        container = containers[challengeid]
+        oldy = container.winfo_y()
+        [containers[i].place(relx=0, relwidth=1, y=containers[i].winfo_y()-40, height=40) for i in containers if containers[i].winfo_y() > oldy] #bring up everything below
+        container.place_forget()
+        del containers[challengeid]
+    elif notification=="ACCEPTCHALLENGE":
+        challengeid, gameid, whitename, blackname = notifparams
+        challengepath = '/homeframe/outchallenges'
+        challengecontainers = uicomponents[challengepath+'frames']
+        challengecontainer = challengecontainers[challengeid]
+        oldy = challengecontainer.winfo_y()
+        [challengecontainers[i].place(relx=0, relwidth=1, y=challengecontainers[i].winfo_y()-40, height=40) for i in challengecontainers if challengecontainers[i].winfo_y() > oldy]
+        challengecontainer.place_forget()
+        del challengecontainers[challengeid]
+        
+        gamepath = '/homeframe/activegames'
+        gamecontainer = tk.Frame(uicomponents[gamepath])
+        uicomponents[gamepath+'frames'][gameid] = gamecontainer
+        label = tk.Label(gamecontainer, text="%s vs. %s"%(whitename, blackname))
+        label.place(relx=0, relwidth=1, rely=0, relheight=.5)
+
+        viewer = tk.Button(gamecontainer, text="View", command=GameViewer(gameid) )
+        viewer.place(relx=.35, relwidth=.3, rely=.5, relheight=.5)
+
+        isactiveplayer = receiver.uname == whitename
+        possessive = "Your" if isactiveplayer else ("%s's"%whitename)
+        turnlabel = "%s move." % possessive
+
+        uicomponents[gamepath+'viewbuttons'][gameid] = viewer
+        gamecontainer.place(relx=0, relwidth=1, y=len(uicomponents[gamepath+'frames'])*40, height=40)
+    elif notification=="REJECTCHALLENGE":
+        challengeid, = notifparams
+        path = '/homeframe/outchallenges'
+        containers = uicomponents[path+'frames']
+        container = containers[challengeid]
+        oldy = container.winfo_y()
+        [containers[i].place(relx=0, relwidth=1, y=containers[i].winfo_y()-40, height=40) for i in containers if containers[i].winfo_y() > oldy] #bring up everything below
+        container.place_forget()
+        del containers[challengeid]
+    elif notification=="NEWCHALLENGE":
+        oppname, challengeid, colorselection = notifparams
+        path = '/homeframe/inchallenges'
+        containers = uicomponents[path+'frames']
+        lowesty = 0 if len(containers) == 0 else max([containers[i].winfo_y() for i in containers]) #lowest on screen, not lowest number
+        height = lowesty+40
+        container = tk.Frame(uicomponents[path])
+        label = tk.Label(container, text=writeout(False, oppname, colorselection))
+        label.place(relx=0, relwidth=1, rely=0, relheight=.5)
+        accepter = tk.Button(container, text="Accept", command=ResponseHandler(challengeid, colorselection=="Opponent", acceptchallenge))
+        accepter.place(relx=.1, relwidth=.3, rely=.5, relheight=.5)
+        rejecter = tk.Button(container, text="Reject", command=ResponseHandler(challengeid, False, rejectchallenge))
+        rejecter.place(relx=.6, relwidth=.3, rely=.5, relheight=.5)
+        uicomponents[path+'accepts'][challengeid] = accepter
+        uicomponents[path+'rejects'][challengeid] = rejecter
+        container.place(relx=0, relwidth=1, y=height, height=40)
+        containers[challengeid] = container
 
 def handleMove(params):
     if params[0] == "SUCCESS":
@@ -272,9 +384,11 @@ def setboard(squares, turn):
 
 functions = {
     "LOGIN" : handleLogin,
+    "NEWUSER" : handleLogin,
     "SHOWCHALLENGES" : handleShowChallenges,
     "SHOWACTIVEGAMES" : handleShowActiveGames,
     "NEWCHALLENGE" : handleNewChallenge,
+    "RESPOND" : handleRespond,
     "GETGAMESTATE" : handleGetGameState,
     "NOTIFY" : handleNotify,
     "MOVE" : handleMove,
@@ -343,6 +457,22 @@ def serverlogin():
     uname = uicomponents['/login/uname'].get()
     pwd = uicomponents['/login/pwd'].get()
     receiver.sock.send(bytes('LOGIN\r\n%s\r\n%s\r\n\r\n'%(uname, pwd), "UTF-8"))
+
+def newuserscreen():
+    uicomponents['/login'].pack_forget()
+    uicomponents['/newuser'].pack()
+
+def servercreateuser():
+    global uicomponents, receiver
+    uname = uicomponents['/newuser/uname'].get()
+    pwd = uicomponents['/newuser/pwd'].get()
+    pwdcfm = uicomponents['/newuser/pwdcfm'].get()
+    if pwd == pwdcfm:
+        receiver.sock.send(bytes('NEWUSER\r\n%s\r\n%s\r\n\r\n'%(uname, pwd), "UTF-8"))
+    
+def returntologin():
+    uicomponents['/newuser'].pack_forget()
+    uicomponents['/login'].pack()
 
 def killcommand():
     global receiver, uicomponents
@@ -449,10 +579,23 @@ uicomponents['/login'] = tk.Frame(uicomponents['/'])
 uicomponents['/login/uname'] = tk.Entry(uicomponents['/login'])
 uicomponents['/login/pwd'] = tk.Entry(uicomponents['/login'], show="*")
 uicomponents['/login/auth'] = tk.Button(uicomponents['/login'], text="Log in", command=serverlogin)
+uicomponents['/login/newuser'] = tk.Button(uicomponents['/login'], text="New User", command=newuserscreen)
 uicomponents['/login/uname'].pack()
 uicomponents['/login/pwd'].pack()
 uicomponents['/login/auth'].pack()
+uicomponents['/login/newuser'].pack()
 uicomponents['/login'].pack()
+uicomponents['/newuser'] = tk.Frame(uicomponents['/'])
+uicomponents['/newuser/uname'] = tk.Entry(uicomponents['/newuser'])
+uicomponents['/newuser/pwd'] = tk.Entry(uicomponents['/newuser'], show="*")
+uicomponents['/newuser/pwdcfm'] = tk.Entry(uicomponents['/newuser'], show="*")
+uicomponents['/newuser/new'] = tk.Button(uicomponents['/newuser'], text="Create User", command=servercreateuser)
+uicomponents['/newuser/return'] = tk.Button(uicomponents['/newuser'], text="Return", command=returntologin)
+uicomponents['/newuser/uname'].pack()
+uicomponents['/newuser/pwd'].pack()
+uicomponents['/newuser/pwdcfm'].pack()
+uicomponents['/newuser/new'].pack()
+uicomponents['/newuser/return'].pack()
 uicomponents['/killframe'] = tk.Frame(uicomponents['/'])
 uicomponents['/killframe/killserver'] = tk.Button(uicomponents['/killframe'], text="KILL", command=killcommand)
 uicomponents['/killframe/killserver'].pack()
@@ -482,10 +625,9 @@ uicomponents['/newchallengeframe/cancel'] = tk.Button(uicomponents['/newchalleng
 uicomponents['/newchallengeframe/cancel'].place(relx=.5, relwidth=.32, rely=.93, relheight=.04)
 
 uicomponents['/respondchooseframe'] = tk.Frame(uicomponents['/'])
-uicomponents['/respondchooseframe/opplabel'] = tk.Label(uicomponents['/respondchooseframe'], text="Opponent")
-uicomponents['/respondchooseframe/opplabel'].place(relx=.35, relwidth=.15, rely=0)
-uicomponents['/respondchooseframe/oppname'] = tk.Entry(uicomponents['/respondchooseframe'])
-uicomponents['/respondchooseframe/oppname'].place(relx=.5, relwidth=.15, rely=0)
+uicomponents['/respondchooseframe/oppnamevar'] = tk.StringVar()
+uicomponents['/respondchooseframe/opplabel'] = tk.Label(uicomponents['/respondchooseframe'], textvariable=uicomponents['/respondchooseframe/oppnamevar'])
+uicomponents['/respondchooseframe/opplabel'].place(relx=.35, relwidth=.35, rely=0)
 uicomponents['/respondchooseframe/decision'] = tk.Listbox(uicomponents['/respondchooseframe'])
 uicomponents['/respondchooseframe/decision'].place(relx=.35, relwidth=.3, rely=.2)
 
