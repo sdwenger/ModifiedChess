@@ -365,11 +365,22 @@ def handleMove(params):
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
             turn = newposition[69]
+            ischeck = len(chesslogic.checkStatus(newposition, False)) != 0
             setboard(squares, turn)
             uicomponents['/gameframe/position'] = newposition
 
 def setboard(squares, turn):
-    print(chesslogic.checkStatus(squares+'-----'+turn, False))
+    global checkSquare
+    oldchecksquare = checkSquare
+    ischeck = len(chesslogic.checkStatus(''.join(squares)+'-----'+turn, False)) != 0
+    if ischeck:
+        king = 'K' if turn == 'W' else 'k'
+        checkindex = squares.index(king)
+        checkSquare = chesslogic.indexToSquareName(checkindex)
+    else:
+        checkSquare = None
+    unhighlight(checkSquare) if checkSquare != None else None
+    unhighlight(oldchecksquare) if oldchecksquare != None else None
     for i in range(64):
         rawrow = i//8
         row = (rawrow)+1
@@ -380,6 +391,7 @@ def setboard(squares, turn):
         canvas.delete("all")
         if squares[i] in photoimages:
             canvas.create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
+            
     uicomponents['/gameframe/gameheader/turnstring'].set("%s to move."%("White" if turn=="W" else "Black"))
 
 functions = {
