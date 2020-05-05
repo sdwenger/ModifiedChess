@@ -8,10 +8,12 @@ import chesslogic
 uicomponents = {}
 
 challengeoptions = [["Play as White", "WHITE"],["Play as Black", "BLACK"],["Select randomly","RANDOM"],["Let opponent decide","OPPONENT"]]
+imagecodes = {'queen':'q', 'knight':'n', 'rook':'r', 'bishop':'b'}
 selectedSquare = None
 validSquares = []
 specialSquares = []
 checkSquare = None
+promotionInProgress = False
 
 selectcolor = "#00FF00"
 validcolor = "Blue"
@@ -81,6 +83,14 @@ class ResponseHandler:
     def __call__(self):
         self.responsefunction(self.challengeid, self.selectcolor)
 
+class PromotionHandler:
+    def __init__(self, promoteType):
+        self.promoteType = promoteType
+        
+    def __call__(self):
+        request = bytes("PROMOTE\r\n%s\r\n%s\r\n%s\r\n\r\n"%(uicomponents['/gameframe/gameboard/gameid'], imagecodes[self.promoteType], receiver.sessionid), "UTF-8")
+        receiver.sock.send(request)
+
 class SquareClickHandler:
     def __init__(self, square):
         self.square = square
@@ -93,7 +103,7 @@ class SquareClickHandler:
             position = uicomponents['/gameframe/position']
             color = uicomponents['/gameframe/gameboard/color']
             piece = position[index]
-            if piece != '-' and color==position[69] and ((color == "W") == (piece.isupper())):
+            if piece != '-' and color==position[69] and ((color == "W") == (piece.isupper())) and not promotionInProgress:
                 canvas = uicomponents['/gameframe/gameboard/%s'%self.square]
                 canvas.config(bg=selectcolor)
                 selectedSquare = self.square
@@ -291,7 +301,7 @@ def handleGetGameState(params):
 def handleNotify(params):
     notification = params[0]
     notifparams = params[1:]
-    if notification=="OPPMOVE":
+    if notification=="OPPMOVE" or notification=="ENEMYPROMOTE":
         gameid, newposition = notifparams
         if '/gameframe/gameboard/gameid' in uicomponents and gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
@@ -369,10 +379,13 @@ def handleMove(params):
             setboard(squares, turn)
             uicomponents['/gameframe/position'] = newposition
 
+handlePromote = handleMove
+
 def setboard(squares, turn):
-    global checkSquare
+    global checkSquare, promotionInProgress
     oldchecksquare = checkSquare
-    ischeck = len(chesslogic.checkStatus(''.join(squares)+'-----'+turn, False)) != 0
+    fauxboard = ''.join(squares)+'-----'+turn
+    ischeck = len(chesslogic.checkStatus(fauxboard, False)) != 0
     if ischeck:
         king = 'K' if turn == 'W' else 'k'
         checkindex = squares.index(king)
@@ -391,7 +404,14 @@ def setboard(squares, turn):
         canvas.delete("all")
         if squares[i] in photoimages:
             canvas.create_image(0, 0, image=photoimages[squares[i]], anchor=tk.NW)
-            
+    promotesquare = chesslogic.promoteSquare(fauxboard)
+    if promotesquare == None:
+        promotionInProgress = False
+        uicomponents['/gameframe/gamecontrol/promotion'].place_forget()
+    elif uicomponents['/gameframe/gameboard/color']==turn:
+        promotionInProgress = True
+        uicomponents['/gameframe/gamecontrol/promotion'].place(relx=0, relwidth=1, y=350, height=300)
+        execGen(uicomponents['/gameframe/gamecontrol/promotion/%s'%i].config(image=photoimages[imagecodes[i].__getattribute__('upper' if turn=='W' else 'lower')()]) for i in imagecodes)
     uicomponents['/gameframe/gameheader/turnstring'].set("%s to move."%("White" if turn=="W" else "Black"))
 
 functions = {
@@ -404,7 +424,12 @@ functions = {
     "GETGAMESTATE" : handleGetGameState,
     "NOTIFY" : handleNotify,
     "MOVE" : handleMove,
+    "PROMOTE" : handlePromote
 }
+
+def execGen(gen):
+    for i in gen:
+        pass
 
 def sockExtract(sock, bufsize):
     oldtimeout = sock.gettimeout()
@@ -673,6 +698,16 @@ uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = tk.Listbox(uico
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].place(relx=0,rely=0,relwidth=.5,relheight=1)
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].place(relx=.5,rely=0,relwidth=.5,relheight=1)
+uicomponents['/gameframe/gamecontrol/promotion'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
+#uicomponents['/gameframe/gamecontrol/promotion'].place(relx=0, relwidth=1, y=350, height=300)
+uicomponents['/gameframe/gamecontrol/promotion/queen'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("queen"))
+uicomponents['/gameframe/gamecontrol/promotion/queen'].place(relx=0, relwidth=.5, rely=0, relheight=.5)
+uicomponents['/gameframe/gamecontrol/promotion/knight'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("knight"))
+uicomponents['/gameframe/gamecontrol/promotion/knight'].place(relx=.5, relwidth=.5, rely=0, relheight=.5)
+uicomponents['/gameframe/gamecontrol/promotion/rook'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("rook"))
+uicomponents['/gameframe/gamecontrol/promotion/rook'].place(relx=0, relwidth=.5, rely=.5, relheight=.5)
+uicomponents['/gameframe/gamecontrol/promotion/bishop'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("bishop"))
+uicomponents['/gameframe/gamecontrol/promotion/bishop'].place(relx=.5, relwidth=.5, rely=.5, relheight=.5)
 uicomponents['/gameframe/gamecontrol'].place(x=0, y=100, width=300, height=800)
 uicomponents['/gameframe/gameboard'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gameboard/squaresInitialized'] = False

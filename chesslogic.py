@@ -12,6 +12,8 @@ def move(position, initial, final):
     turn = data[69]
     initialIndex = squareNameToIndex(initial)
     finalIndex = squareNameToIndex(final)
+    xi, yi = indexToXY(initialIndex)
+    xf, yf = indexToXY(finalIndex)
     mover = data[initialIndex]
     target = data[finalIndex]
     data[finalIndex] = mover
@@ -23,11 +25,20 @@ def move(position, initial, final):
     squares = set([initial, final])
     castledata = (("e1","h1",True,True),("e1","a1",False,True),("e8","h8",True,False),("e8","a8",False,False))
     for i in castledata:
-        if set((i[0],i[1])) in squares:
+        if not set((i[0],i[1])).isdisjoint(squares):
             data[castleRightIndex(i[2], i[3])] = '-'
+    #begin- handle moving rook if castle
+    if mover.lower() == 'k' and math.fabs(xf-xi) == 2:
+        iskingside = xf>xi
+        rookstartcol = 8 if iskingside else 1
+        rookendcol = 6 if iskingside else 4
+        rookrow = yi
+        rookstartindex = xyToIndex(rookstartcol, rookrow)
+        rookendindex = xyToIndex(rookendcol, rookrow)
+        data[rookendindex] = data[rookstartindex]
+        data[rookstartindex] = '-'
+    #end- handle moving rook if castle
     #begin- remove en passanted enemy pawn if applicable
-    xi, yi = indexToXY(initialIndex)
-    xf, yf = indexToXY(finalIndex)
     if mover.lower() == 'p' and xi != xf and target == '-': #is en passant
         shortrow = 5 if mover.isupper() else 4
         longrow = 6 if mover.isupper() else 3
@@ -35,37 +46,64 @@ def move(position, initial, final):
         index = longindex if position[longindex] != '-' else xyToIndex(xf, shortrow)
         data[index] = '-'
     #end- remove en passanted enemy pawn if applicable
-    
     #begin- calculating if OPPONENT will have en passant available
     enpassant = '-'
+    isPromotion = False
     if mover.lower() == 'p':
+        promotionrow = 8 if mover.isupper() else 1
         xi,yi = indexToXY(initialIndex)
         xf,yf = indexToXY(finalIndex)
-        shortrow = 4 if mover.isupper() else 5
-        longrow = 3 if mover.isupper() else 6
-        step = math.fabs(yf-yi)
-        if step >= 2:
-            validlong = False
-            if yi in (1,8):
-                cols = [i for i in (xi-1,xi+1) if i in range(1,9)]
-                candidates = [xyToIndex(i,longrow) for i in cols]
-                pawnindeces = [i for i in candidates if (position[i].lower()=='p' and isEnemy(mover, position[i]))]
-                testenpassant = data[:]
-                testenpassant[68] = chr(xi+64)
-                testenpassant[69] = 'B' if turn=='W' else 'W'
-                validlong = any(enpassantischecksafe(''.join(testenpassant), indexToSquareName(i), xyToSquareName(xi,longrow), xyToSquareName(xf,yf)) for i in pawnindeces)
-                enpassant = chr(xi+64)
-            if not validlong:
-                cols = [i for i in (xi-1,xi+1) if i in range(1,9)]
-                candidates = [xyToIndex(i,shortrow) for i in cols]
-                pawnindeces = [i for i in candidates if (position[i].lower()=='p' and isEnemy(mover, position[i]))]
-                testenpassant = data[:]
-                testenpassant[68] = chr(xi+96)
-                testenpassant[69] = 'B' if turn=='W' else 'W'
-                validshort = any(enpassantischecksafe(''.join(testenpassant), indexToSquareName(i), xyToSquareName(xi,shortrow), xyToSquareName(xf,yf)) for i in pawnindeces)
-                enpassant = chr(xi+96)
+        if yf == promotionrow:
+            isPromotion = True
+        else:
+            shortrow = 4 if mover.isupper() else 5
+            longrow = 3 if mover.isupper() else 6
+            step = math.fabs(yf-yi)
+            if step >= 2:
+                validlong = False
+                if yi in (1,8):
+                    cols = [i for i in (xi-1,xi+1) if i in range(1,9)]
+                    candidates = [xyToIndex(i,longrow) for i in cols]
+                    pawnindeces = [i for i in candidates if (position[i].lower()=='p' and isEnemy(mover, position[i]))]
+                    testenpassant = data[:]
+                    testenpassant[68] = chr(xi+64)
+                    testenpassant[69] = 'B' if turn=='W' else 'W'
+                    validlong = any(enpassantischecksafe(''.join(testenpassant), indexToSquareName(i), xyToSquareName(xi,longrow), xyToSquareName(xf,yf)) for i in pawnindeces)
+                    enpassant = chr(xi+64)
+                if not validlong:
+                    cols = [i for i in (xi-1,xi+1) if i in range(1,9)]
+                    candidates = [xyToIndex(i,shortrow) for i in cols]
+                    pawnindeces = [i for i in candidates if (position[i].lower()=='p' and isEnemy(mover, position[i]))]
+                    testenpassant = data[:]
+                    testenpassant[68] = chr(xi+96)
+                    testenpassant[69] = 'B' if turn=='W' else 'W'
+                    validshort = any(enpassantischecksafe(''.join(testenpassant), indexToSquareName(i), xyToSquareName(xi,shortrow), xyToSquareName(xf,yf)) for i in pawnindeces)
+                    enpassant = chr(xi+96)
     #end- calculating if OPPONENT will have en passant available
     data[68] = enpassant
+    if not isPromotion:
+        data[69] = 'B' if turn=='W' else 'W'
+    return ''.join(data)
+
+def promoteSquare(position):
+    if position[69] == 'W':
+        for i in range(56, 64):
+            if position[i] == 'P':
+                return indexToSquareName(i)
+    else:
+        for i in range(0, 8):
+            if position[i] == 'p':
+                return indexToSquareName(i)
+
+def promote(position, square, newType):
+    index = squareNameToIndex(square)
+    data = list(position)
+    if data[index]=='P':
+        newPiece = newType.upper()
+    if data[index]=='p':
+        newPiece = newType.lower()
+    data[index] = newPiece
+    turn = data[69]
     data[69] = 'B' if turn=='W' else 'W'
     return ''.join(data)
 
@@ -83,6 +121,8 @@ def enpassantischecksafe(position, initial, final, captured):
 def isValidMove(position, initial, final, knownSafe=False):
     if initial == final:
         return False #non-move
+    if promoteSquare(position) != None:
+        return False
     xi, yi = squareNameToXY(initial)
     xf, yf = squareNameToXY(final)
     dx, dy = xf-xi,yf-yi
@@ -162,6 +202,8 @@ def pieceValidMoves(position, square):
     piece = position[index]
     if piece == '-':
         return None #blank square
+    if promoteSquare(position) != None:
+        return None #moving mid-promotion
     if (turn=="W") != (piece.isupper()):
         return None #out of turn piece
     piecetype = piece.lower()
@@ -180,7 +222,14 @@ def pieceValidMoves(position, square):
             hypstate = checkStatus(''.join(data), False)
             if len(hypstate) == 0:
                 safesquares.append(xyToSquareName(xf,yf))
-        return [safesquares, []]
+        castlerow = 1 if piece.isupper() else 8
+        castletargets = []
+        if x==5 and y==castlerow:
+            if validateCastle(position, 5, castlerow, 3, castlerow): #queenside
+                castletargets.append(xyToSquareName(3, castlerow))
+            if validateCastle(position, 5, castlerow, 7, castlerow): #kingside
+                castletargets.append(xyToSquareName(7, castlerow))
+        return [safesquares, castletargets]
     else:
         ((pxta, pyta), pindistance) = pinStatus(position, x,y, piece) #pxta is for "pin x-direction threat arrow"
         allyKing = 'K' if piece.isupper() else 'k'
@@ -294,7 +343,7 @@ returns NORMAL, CHECK, STALEMATE, or CHECKMATE
 if checkTerminalConditions is False, only returns NORMAL or CHECK
     checkTerminalConditions=False is used for validating that moves keep the king clear
 '''
-def checkStatus(position, checkTerminalConditions=True):
+def checkStatus(position, checkTerminalConditions=True, lookForDoubleCheck=True):
     turn = position[-1]
     target = "K" if turn=="W" else "k"
     enemyPawnAttackDirection = 1 if turn=="W" else -1 #opposite what seems intuitive. This is because we're checking the king for enemy pawns- this means checking backwards
@@ -309,6 +358,8 @@ def checkStatus(position, checkTerminalConditions=True):
                 attacks.append(xyToSquareName(knightx, knighty))
     for i in directions:
         if len(attacks) == 2: #no use in further checks after finding double check
+            break
+        if len(attacks) == 1 and not lookForDoubleCheck:
             break
         linedPiece, distance = findFirstOnLine(position, kingx, kingy, i[0], i[1])
         if linedPiece == "-":
@@ -467,7 +518,7 @@ def getopendirection(position,iswhite,x,y,dx,dy):
 def validateCastle(position, xi, yi, xf, yf):
     turn = position[69]
     castlerow = 1 if turn == 'W' else 8
-    if not (xi == 5 and yi == castlerow):
+    if not (xi == 5 and yi == castlerow): #starting square
         return False
     if yf == yi:
         if xf == 3:
@@ -478,12 +529,27 @@ def validateCastle(position, xi, yi, xf, yf):
             return False #wrong column
     else:
         return False #wrong row
+    if len(checkStatus(position, False, False)) >= 1: #cannot castle out of check
+        return False
     rightIndex = castleRightIndex(isKingSide, turn == 'W')
     if position[rightIndex] != '+':
         return False #castle right does not exist
     checkclearcols = (6,7) if isKingSide else (2,3,4)
-    checksafecols = (5,6,7) if isKingSide else (3,4,5)
-    clearpath = all([position[xyToIndex(castlerow, i)]=='-' for i in checkclearcols])
+    clearpath = all(position[xyToIndex(i, castlerow)]=='-' for i in checkclearcols)
+    if not clearpath:
+        return False
+    checksafecols = (6,7) if isKingSide else (3,4)
+    startindex = xyToIndex(5, castlerow)
+    king = position[startindex]
+    for i in checksafecols:
+        targetindex = xyToIndex(i, castlerow)
+        testdata = list(position)
+        testdata[targetindex] = king
+        testdata[startindex] = '-'
+        safe = len(checkStatus(''.join(testdata), False, False)) == 0
+        if not safe:
+            return False
+    return True
 
 def castleRightIndex(isKingSide, isWhite):
     return 64 + (0 if isKingSide else 1) + (0 if isWhite else 2)

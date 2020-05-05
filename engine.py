@@ -175,6 +175,9 @@ def move(cursor, params, connhandler):
     gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name")
     gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName"])
     position = gamedata['Position']
+    if chesslogic.promoteSquare(position) != None:
+        print(gamedata)
+        return b"FAILURE\r\nPawn must be promoted before any further moves\r\n\r\n"
     turn = position[69]
     if (turn == 'W') != (gamedata['WhiteId'] == uid):
         return b"FAILURE\r\nOut of turn play\r\n\r\n"
@@ -185,6 +188,28 @@ def move(cursor, params, connhandler):
         serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nOPPMOVE\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition)))
         return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition))
     return b"Failure\r\nNot yet implemented\r\n\r\n"
+
+def promote(cursor, params, connhandler):
+    gameid, promoteType, sessionid = params
+    uname = serverlogic.getunamefromsession(sessionid, connhandler, True)
+    usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
+    userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
+    uid = userdata['Id']
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName"])
+    position = gamedata['Position']
+    turn = position[69]
+    if (turn == 'W') != (gamedata['WhiteId'] == uid):
+        return b"FAILURE\r\nOut of turn play\r\n\r\n"
+    promotesquare = chesslogic.promoteSquare(position)
+    if promotesquare == None:
+        print(gamedata)
+        return b"FAILURE\r\nNo pending promotion\r\n\r\n"
+    newposition = chesslogic.promote(position, promotesquare, promoteType)
+    dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
+    oppname = gamedata['BlackName'] if turn == 'W' else gamedata['WhiteName']
+    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nENEMYPROMOTE\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition)))
+    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition))
 
 def killserver(cursor, params, connhandler):
     return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"
@@ -209,6 +234,7 @@ cmdfunctions = {
     "RESPOND" : respond,
     "GETGAMESTATE" : getgamestate,
     "MOVE" : move,
+    "PROMOTE" : promote,
     "KILLSERVER" : killserver
 }
 
