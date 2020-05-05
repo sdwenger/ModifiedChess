@@ -106,7 +106,7 @@ class SquareClickHandler:
                     canvas.config(bg=specialcolor)
         else:
             if self.square in (validSquares+specialSquares):
-                handlemove(uicomponents['/gameframe/gameboard/gameid'], priorSelection, self.square, receiver.sessionid)
+                servermove(uicomponents['/gameframe/gameboard/gameid'], priorSelection, self.square, receiver.sessionid)
             selectedSquare = None
             unhighlight(priorSelection)
             for i in validSquares+specialSquares:
@@ -121,7 +121,7 @@ def unhighlight(square):
         x,y = chesslogic.squareNameToXY(square)
         canvas.config(bg=getNormalColor(x,y))
 
-def handlemove(gameid, init, final, sessionid):
+def servermove(gameid, init, final, sessionid):
     request = bytes("MOVE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, init, final, sessionid), "UTF-8")
     receiver.sock.send(request)
 
