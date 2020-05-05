@@ -212,7 +212,7 @@ def pieceValidMoves(position, square):
                 index = longindex if position[longindex] != '-' else xyToIndex(enpassantcolumn, shortrow)
                 target = indexToSquareName(index)
                 dest = xyToSquareName(enpassantcolumn, y+direc)
-                if enpassantischecksafe(position, square, dest, target):
+                if validenpassant and enpassantischecksafe(position, square, dest, target):
                     prelim[1].append(dest)
         return prelim
 
