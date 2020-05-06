@@ -172,8 +172,8 @@ def move(cursor, params, connhandler):
     usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name")
-    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName"])
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name, DeferredClaim, ClaimIs3x, OfferRecipient")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName", "DeferredClaim", "ClaimIs3x", "OfferRecipient"])
     position = gamedata['Position']
     if chesslogic.promoteSquare(position) != None:
         print(gamedata)
@@ -183,6 +183,7 @@ def move(cursor, params, connhandler):
         return b"FAILURE\r\nOut of turn play\r\n\r\n"
     if chesslogic.isValidMove(position, initial, final):
         newposition, captured, isEnPassant, mover = chesslogic.move(position, initial, final)
+        status = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["DeferredClaim"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
         dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
         movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "COUNT(Id)")
         sequence = dblogic.unwrapCursor(movecountcursor, False)[0] + 1

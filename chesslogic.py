@@ -1,7 +1,7 @@
 import math
 import itertools
 
-NORMAL, CHECK, DOUBLECHECK, STALEMATE, CHECKMATE = range(5)
+NORMAL, CHECK, DOUBLECHECK, STALEMATE, CHECKMATE, INSUFFICIENT, AUTOACCEPT = range(7)
 indeces = set(range(1,9))
 directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 knightMoves = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (1, -2), (-1, 2), (1, 2)]
@@ -392,6 +392,41 @@ def pinStatus(position, x,y, piece):
                     return (threatdirection, distance)
     return ((0,0), 0)
     
+    
+def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3x, gameid, cursor):
+    turn = position[69]
+    checkStatus = checkStatus(lookForDoubleCheck=False)
+    if checkStatus in [CHECKMATE, STALEMATE]:
+        return checkStatus
+    allsquares = position[:64]
+    minorPiece = False
+    sufficientMaterial = False
+    for i in allsquares:
+        piecetype = allsquares.lower()
+        if piecetype in ['q','r','p']:
+            sufficientMaterial = True
+        elif piecetype in ['b','n']:
+            sufficientMaterial = minorPiece
+            minorPiece = True
+        if sufficientMaterial:
+            break
+    else:
+        return INSUFFICIENT
+    if offerrecipientid != None:
+        isRecipientNonKing = lambda x: (x!='K' and x.isupper()) if offerrecipientid==whiteid else lambda x: (x!='k' and x.islower())
+        for i in allsquares:
+            if isReceipientNonKing(i):
+                break
+        else:
+            return AUTOACCEPT
+    evaluateClaim = (claimantid==whiteid and turn=='B') or (claimantid==blackid and turn=='W')
+    if evaluateClaim:
+        movecursor = dblogic.selectCommon(cursor, "Moves", {"Moves.Game": gameid}, "PosBefore, SqFrom, SqTo, Piece, Captured", " ORDER BY Moves.Id DESC")
+        positions = dblogic.unwrapCursor(movecursor, True, ["Position","From","To","Mover","Captured"])
+        pass
+    return NORMAL
+    #use sufficientMaterial to flag insufficient material draw
+    
 '''
 returns NORMAL, CHECK, STALEMATE, or CHECKMATE
 if checkTerminalConditions is False, only returns NORMAL or CHECK
@@ -439,21 +474,12 @@ def checkStatus(position, checkTerminalConditions=True, lookForDoubleCheck=True)
             break
     else: #no valid moves on any piece
         validMovesExist = False
-    #validMovesExist+attacks gives information for checkmate/stalemate
-    allsquares = position[:64]
-    minorPiece = False
-    sufficientMaterial = False
-    for i in allsquares:
-        piecetype = allsquares.lower()
-        if piecetype in ['q','r','p']:
-            sufficientMaterial = True
-        elif piecetype in ['b','n']:
-            sufficientMaterial = minorPiece
-            minorPiece = True
-        if sufficientMaterial:
-            break
-    #use sufficientMaterial to flag insufficient material draw
-    return attacks
+    if validMovesExist:
+        return attacks
+    elif len(attacks) >= 1:
+        return CHECKMATE
+    else:
+        return STALEMATE
 
 def isEnemy(target, attacker):
     if type(target) == bool:
