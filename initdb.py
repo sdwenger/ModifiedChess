@@ -13,8 +13,8 @@ metadatastrings = OrderedDict({
 datastrings = OrderedDict({
         "Challenges":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Challenger INTEGER, Challengee INTEGER, ColorSelection INTEGER, FOREIGN KEY(Challenger) REFERENCES Users(Id), FOREIGN KEY(Challengee) REFERENCES Users(Id),  FOREIGN KEY(ColorSelection) REFERENCES ColorSelections(Id))",
         "Games":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, White INTEGER, Black INTEGER, Status INTEGER, Substatus INTEGER, Position CHAR(70), AwaitingPromote BIT(1), ClaimFaultPlayer CHAR(1), ClaimFaults INTEGER, OfferRecipient INTEGER, FiftyMoveCount INTEGER, FOREIGN KEY(Black) REFERENCES Users(Id), FOREIGN KEY(White) REFERENCES Users(Id), FOREIGN KEY (Status) REFERENCES GameStatuses(Id), FOREIGN KEY (Substatus) REFERENCES GameSubstatuses(Id), FOREIGN KEY(OfferRecipient) REFERENCES Users(Id))",
-        "Moves":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, SqFrom CHAR(2), SqTo CHAR(2), Captured CHAR(1), isEnPassant BIT(1), Player CHAR(1), Piece CHAR(1), Sequence INT, Game INTEGER, PosBefore CHAR(70), PosAfter CHAR(70), FOREIGN KEY(Game) REFERENCES Games(Id))",
-        "Promotions":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Move INTEGER NewType CHAR(1), FOREIGN KEY(Move) REFERENCES Moves(Id))"
+        "Moves":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, SqFrom CHAR(2), SqTo CHAR(2), Captured CHAR(1), isEnPassant BIT(1), Player CHAR(1), Piece CHAR(1), Sequence INT, Game INTEGER, PosBefore CHAR(70), PosAfter CHAR(70), Annotated CHAR(7), FOREIGN KEY(Game) REFERENCES Games(Id))",
+        "Promotions":"(Id INTEGER PRIMARY KEY AUTOINCREMENT, Move INTEGER, Piece CHAR(1), PosBefore CHAR(70), PosAfter CHAR(70), FOREIGN KEY(Move) REFERENCES Moves(Id))"
         })
 
 def connect():

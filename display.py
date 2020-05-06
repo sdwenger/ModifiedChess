@@ -73,6 +73,8 @@ class GameViewer:
         uicomponents['/gameframe/gameboard/gameid'] = self.gameid
         request = bytes("GETGAMESTATE\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
         receiver.sock.send(request)
+        request = bytes("SHOWMOVEHISTORY\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
+        receiver.sock.send(request)
 
 class ResponseHandler:
     def __init__(self, challengeid, selectcolor, responsefunction):
@@ -302,12 +304,28 @@ def handleNotify(params):
     notification = params[0]
     notifparams = params[1:]
     if notification=="OPPMOVE" or notification=="ENEMYPROMOTE":
-        gameid, newposition = notifparams
+        gameid, annotation, strsequence, newposition = notifparams
+        movesequence = int(strsequence)
         if '/gameframe/gameboard/gameid' in uicomponents and gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
             turn = newposition[69]
             setboard(squares, turn)
             uicomponents['/gameframe/position'] = newposition
+            if uicomponents['/gameframe/gameboard/color'] == 'B':
+                labelpath = '/gameframe/movepanel/%slabel'%movesequence
+                whitepath = '/gameframe/movepanel/%swhite'%movesequence
+                if whitepath in uicomponents:
+                    uicomponents[whitepath].place_forget()
+                uicomponents[labelpath] = tk.Label(uicomponents['/gameframe/movepanel'], text="%s. "%movesequence)
+                uicomponents[labelpath].place(relx=.1, relwidth=.25, height=30, y=30*movesequence+70)
+                uicomponents[whitepath] = tk.Label(uicomponents['/gameframe/movepanel'], text=annotation)
+                uicomponents[whitepath].place(relx=.35, relwidth=.25, height=30, y=30*movesequence+70)
+            else:
+                blackpath = '/gameframe/movepanel/%sblack'%movesequence
+                if blackpath in uicomponents:
+                    uicomponents[blackpath].place_forget()
+                uicomponents[blackpath] = tk.Label(uicomponents['/gameframe/movepanel'], text=annotation)
+                uicomponents[blackpath].place(relx=.6, relwidth=.25, height=30, y=30*movesequence+70)
     elif notification=="RESCINDCHALLENGE":
         challengeid, = notifparams
         path = '/homeframe/inchallenges'
@@ -371,15 +389,51 @@ def handleNotify(params):
 
 def handleMove(params):
     if params[0] == "SUCCESS":
-        gameid, newposition = params[1:]
+        gameid, annotation, strsequence, newposition = params[1:]
+        movesequence = int(strsequence)
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
             turn = newposition[69]
             ischeck = len(chesslogic.checkStatus(newposition, False)) != 0
             setboard(squares, turn)
             uicomponents['/gameframe/position'] = newposition
+            if uicomponents['/gameframe/gameboard/color'] == 'W':
+                labelpath = '/gameframe/movepanel/%slabel'%movesequence
+                whitepath = '/gameframe/movepanel/%swhite'%movesequence
+                if whitepath in uicomponents:
+                    uicomponents[whitepath].place_forget()
+                uicomponents[labelpath] = tk.Label(uicomponents['/gameframe/movepanel'], text="%s. "%movesequence)
+                uicomponents[labelpath].place(relx=.1, relwidth=.25, height=30, y=30*movesequence+70)
+                uicomponents[whitepath] = tk.Label(uicomponents['/gameframe/movepanel'], text=annotation)
+                uicomponents[whitepath].place(relx=.35, relwidth=.25, height=30, y=30*movesequence+70)
+            else:
+                blackpath = '/gameframe/movepanel/%sblack'%movesequence
+                if blackpath in uicomponents:
+                    uicomponents[blackpath].place_forget()
+                uicomponents[blackpath] = tk.Label(uicomponents['/gameframe/movepanel'], text=annotation)
+                uicomponents[blackpath].place(relx=.6, relwidth=.25, height=30, y=30*movesequence+70)
 
 handlePromote = handleMove
+
+def handleShowMoveHistory(params):
+    if params[0] == "SUCCESS":
+        gameid, movedata = params[1:]
+        if gameid == uicomponents['/gameframe/gameboard/gameid']:
+            moves = movedata.split()
+            whitemoves = moves[::2]
+            blackmoves = moves[1::2]
+            for i in range(len(whitemoves)):
+                seq = i+1
+                labelpath = '/gameframe/movepanel/%slabel'%seq
+                whitepath = '/gameframe/movepanel/%swhite'%seq
+                blackpath = '/gameframe/movepanel/%sblack'%seq
+                uicomponents[labelpath] = tk.Label(uicomponents['/gameframe/movepanel'], text="%s. "%seq)
+                uicomponents[labelpath].place(relx=.1, relwidth=.25, height=30, y=30*i+100)
+                uicomponents[whitepath] = tk.Label(uicomponents['/gameframe/movepanel'], text=whitemoves[i])
+                uicomponents[whitepath].place(relx=.35, relwidth=.25, height=30, y=30*i+100)
+                if len(blackmoves) > i:
+                    uicomponents[blackpath] = tk.Label(uicomponents['/gameframe/movepanel'], text=blackmoves[i])
+                    uicomponents[blackpath].place(relx=.6, relwidth=.25, height=30, y=30*i+100)
 
 def setboard(squares, turn):
     global checkSquare, promotionInProgress
@@ -424,7 +478,8 @@ functions = {
     "GETGAMESTATE" : handleGetGameState,
     "NOTIFY" : handleNotify,
     "MOVE" : handleMove,
-    "PROMOTE" : handlePromote
+    "PROMOTE" : handlePromote,
+    "SHOWMOVEHISTORY": handleShowMoveHistory
 }
 
 def execGen(gen):
@@ -699,7 +754,6 @@ uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].place(relx=0,rely
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].place(relx=.5,rely=0,relwidth=.5,relheight=1)
 uicomponents['/gameframe/gamecontrol/promotion'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
-#uicomponents['/gameframe/gamecontrol/promotion'].place(relx=0, relwidth=1, y=350, height=300)
 uicomponents['/gameframe/gamecontrol/promotion/queen'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("queen"))
 uicomponents['/gameframe/gamecontrol/promotion/queen'].place(relx=0, relwidth=.5, rely=0, relheight=.5)
 uicomponents['/gameframe/gamecontrol/promotion/knight'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("knight"))
@@ -712,6 +766,8 @@ uicomponents['/gameframe/gamecontrol'].place(x=0, y=100, width=300, height=800)
 uicomponents['/gameframe/gameboard'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gameboard/squaresInitialized'] = False
 uicomponents['/gameframe/gameboard'].place(x=300, width=800, height=800, y=100)
+uicomponents['/gameframe/movepanel'] = tk.Frame(uicomponents['/gameframe'])
+uicomponents['/gameframe/movepanel'].place(x=1100, width=300, height=1400, y=0)
 packsquares()
 photoimages = genphotoimages()
     

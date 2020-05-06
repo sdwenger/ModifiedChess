@@ -7,7 +7,7 @@ directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 
 knightMoves = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (1, -2), (-1, 2), (1, 2)]
 
 #move is already assumed to be valid; input here is screened through isValidMove
-def move(position, initial, final):
+def move(position, initial, final, allInformation=True):
     data = list(position)
     turn = data[69]
     initialIndex = squareNameToIndex(initial)
@@ -16,6 +16,7 @@ def move(position, initial, final):
     xf, yf = indexToXY(finalIndex)
     mover = data[initialIndex]
     target = data[finalIndex]
+    captured = target
     data[finalIndex] = mover
     if isAlly(mover, target):
         data[initialIndex] = target
@@ -39,11 +40,13 @@ def move(position, initial, final):
         data[rookstartindex] = '-'
     #end- handle moving rook if castle
     #begin- remove en passanted enemy pawn if applicable
-    if mover.lower() == 'p' and xi != xf and target == '-': #is en passant
+    isEnpassant = (mover.lower() == 'p' and xi != xf and target == '-')
+    if isEnpassant: #is en passant
         shortrow = 5 if mover.isupper() else 4
         longrow = 6 if mover.isupper() else 3
         longindex = xyToIndex(xf, longrow)
         index = longindex if position[longindex] != '-' else xyToIndex(xf, shortrow)
+        captured = data[index]
         data[index] = '-'
     #end- remove en passanted enemy pawn if applicable
     #begin- calculating if OPPONENT will have en passant available
@@ -83,7 +86,10 @@ def move(position, initial, final):
     data[68] = enpassant
     if not isPromotion:
         data[69] = 'B' if turn=='W' else 'W'
-    return ''.join(data)
+    if allInformation:
+        return (''.join(data), captured, isEnpassant, mover)
+    else:
+        return ''.join(data)
 
 def promoteSquare(position):
     if position[69] == 'W':
@@ -106,6 +112,54 @@ def promote(position, square, newType):
     turn = data[69]
     data[69] = 'B' if turn=='W' else 'W'
     return ''.join(data)
+
+def annotateMove(oldposition, newposition, sqfrom, sqto, piece, captured, promoteType=None):
+    startx, starty = squareNameToXY(sqfrom)
+    endx, endy = squareNameToXY(sqto)
+    if piece.upper() == 'K' and starty == endy and math.fabs(startx-endx)==2: #is castle
+        ann_piecetype, ann_initial, ann_capture, ann_promote = '','','',''
+        ann_final = 'O-O' if startx<endx else 'O-O-O'
+    else:
+        piecetype = piece.upper()
+        if piecetype == 'P':
+            ann_piecetype = ''
+            ann_initial = '' if captured=='-' else sqfrom[0]
+        else:
+            ann_piecetype = piecetype
+            fromindex = squareNameToIndex(sqfrom)
+            fromxy = squareNameToXY(sqfrom)
+            isoxys = tuple(indexToXY(i) for i in range(64) if i!=fromindex and piece==oldposition[i] and isValidMove(oldposition, indexToSquareName(i), sqto))
+            print(isoxys)
+            if len(isoxys) == 0:
+                ann_initial = ''
+            else:
+                isocols = tuple(i for i in isoxys if [0] == fromxy[0])
+                if len(isocols) == 0:
+                    ann_initial = sqfrom[0]
+                else:
+                    isorows = tuple(i for i in isoxys if i[1] == fromxy[1])
+                    if len(isorows) == 0:
+                        ann_initial = sqfrom[1]
+                    else:
+                        ann_initial = sqfrom
+        if captured == '-':
+            ann_capture = ''
+        elif piece.isupper() == captured.isupper():
+            ann_capture = 's'
+        else:
+            ann_capture = 'x'
+        ann_final = sqto
+        ann_promote = '' if promoteType==None else '='+promoteType.upper()
+    check = checkStatus(newposition, False)
+    if check == CHECKMATE:
+        ann_check = '#'
+    elif check == STALEMATE:
+        ann_check = 'X'
+    elif len(check) >= 1:
+        ann_check = '+'
+    else:
+        ann_check = ''
+    return ann_piecetype + ann_initial + ann_capture + ann_final + ann_promote + ann_check
 
 def enpassantischecksafe(position, initial, final, captured):
     data = list(position)
@@ -376,6 +430,29 @@ def checkStatus(position, checkTerminalConditions=True, lookForDoubleCheck=True)
     if not checkTerminalConditions:
         return attacks
     #processing to determine checkmate/stalemate
+    pieceturn = (lambda x: x.isupper()) if turn=='W' else (lambda x: x.islower())
+    turnsquares = [indexToSquareName(i) for i in range(64) if pieceturn(position[i])]
+    validMovesExist = True
+    for i in turnsquares:
+        moves = pieceValidMoves(position, i)
+        if len(sum(moves, [])) != 0:
+            break
+    else: #no valid moves on any piece
+        validMovesExist = False
+    #validMovesExist+attacks gives information for checkmate/stalemate
+    allsquares = position[:64]
+    minorPiece = False
+    sufficientMaterial = False
+    for i in allsquares:
+        piecetype = allsquares.lower()
+        if piecetype in ['q','r','p']:
+            sufficientMaterial = True
+        elif piecetype in ['b','n']:
+            sufficientMaterial = minorPiece
+            minorPiece = True
+        if sufficientMaterial:
+            break
+    #use sufficientMaterial to flag insufficient material draw
     return attacks
 
 def isEnemy(target, attacker):

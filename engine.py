@@ -182,11 +182,20 @@ def move(cursor, params, connhandler):
     if (turn == 'W') != (gamedata['WhiteId'] == uid):
         return b"FAILURE\r\nOut of turn play\r\n\r\n"
     if chesslogic.isValidMove(position, initial, final):
-        newposition = chesslogic.move(position, initial, final)
+        newposition, captured, isEnPassant, mover = chesslogic.move(position, initial, final)
         dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
+        movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "COUNT(Id)")
+        sequence = dblogic.unwrapCursor(movecountcursor, False)[0] + 1
+        annotation = chesslogic.annotateMove(position, newposition, initial, final, mover, captured)
+        dblogic.insert(cursor, "Moves", {"SqFrom": initial, "SqTo": final,
+                                        "Captured": captured, "isEnPassant": int(isEnPassant),
+                                        "Player": uid, "Piece": mover,
+                                        "Game": gameid, "Sequence": sequence,
+                                        "PosBefore": position, "PosAfter": newposition,
+                                        "Annotated": annotation})
         oppname = gamedata['BlackName'] if turn == 'W' else gamedata['WhiteName']
-        serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nOPPMOVE\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition)))
-        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition))
+        serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nOPPMOVE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, sequence, newposition)))
+        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, sequence, newposition))
     return b"Failure\r\nNot yet implemented\r\n\r\n"
 
 def promote(cursor, params, connhandler):
@@ -207,9 +216,38 @@ def promote(cursor, params, connhandler):
         return b"FAILURE\r\nNo pending promotion\r\n\r\n"
     newposition = chesslogic.promote(position, promotesquare, promoteType)
     dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
+    movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "Id, Sequence, SqFrom, SqTo, Piece, Captured", suffix=" ORDER BY Sequence DESC LIMIT 1")
+    movedata = dblogic.unwrapCursor(movecountcursor, False, ["Id","Sequence","SqFrom","SqTo","Piece","Captured"])
+    moveid = movedata["Id"]
+    dblogic.insert(cursor, "Promotions", {"Move": moveid,
+                                          "Piece": promoteType.__getattribute__('upper' if turn=='W' else 'lower')(),
+                                          "PosBefore": position,
+                                          "PosAfter": newposition})
+    newannotation = chesslogic.annotateMove(position, newposition, movedata['Initial'], movedata['Final'], movedata['Piece'], movedata['Captured'])
+    dblogic.updateCommon(cursor, "Moves", {"Annotated":newannotation}, moveid)
     oppname = gamedata['BlackName'] if turn == 'W' else gamedata['WhiteName']
-    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nENEMYPROMOTE\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition)))
-    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gameid, newposition))
+    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nENEMYPROMOTE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, movedata["Sequence"], newposition)))
+    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, movedata["Sequence"], newposition))
+
+def showmovehistory(cursor, params, connhandler):
+    gameid, sessionid = params
+    uname = serverlogic.getunamefromsession(sessionid, connhandler, True)
+    usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
+    userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
+    uid = userdata['Id']
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {}, "Id, White, Black")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ['Id', 'White', 'Black'])
+    blackid = gamedata['Black']
+    if len(gamedata) == 0:
+        return b"FAILURE\r\nNo such game or you are not part of it\r\n\r\n"
+    movescursor = dblogic.selectCommon(cursor, "Moves LEFT OUTER JOIN Promotions ON Promotions.Move=Moves.Id", {"Moves.Game": gameid}, 'Moves.Id, Moves.SqFrom, Moves.SqTo, Moves.Captured, Moves.Piece, Moves.Sequence, Moves.PosBefore, Moves.PosAfter, Promotions.Piece, Moves.Player=%s AS Color, Moves.Annotated'%blackid, " ORDER BY Moves.Sequence, Color")
+    movesdata = dblogic.unwrapCursor(movescursor, True, ['Id', 'From','To','Captured','Piece','Sequence','PosBefore','PosAfter','PromotedTo','Color','Annotation'])
+    for i in movesdata:
+        if not i['Annotation']:
+            i['Annotation'] = chesslogic.annotateMove(i['PosBefore'],i['PosAfter'],i['From'],i['To'],i['Piece'],i['Captured'],i['PromotedTo'])
+            dblogic.updateCommon(cursor, "Moves", {"Annotated": i["Annotation"]}, i["Id"])
+    movestring = ' '.join([i['Annotation'] for i in movesdata])
+    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gameid, movestring))
 
 def killserver(cursor, params, connhandler):
     return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"
@@ -235,6 +273,7 @@ cmdfunctions = {
     "GETGAMESTATE" : getgamestate,
     "MOVE" : move,
     "PROMOTE" : promote,
+    "SHOWMOVEHISTORY": showmovehistory,
     "KILLSERVER" : killserver
 }
 

@@ -79,12 +79,12 @@ def updateCommon(cursor, table, data, rowid):
     cursor.connection.commit()
     return cursor
 
-def selectCommon(cursor, table, data, getcols='*'):
+def selectCommon(cursor, table, data, getcols='*', suffix=''):
     cols = [i for i in data] #force order matching
     colmatchstrings = [i+'=?' for i in cols]
     columnstring = ' AND '.join(colmatchstrings)
     valtuple = tuple(data[i] for i in cols)
-    selectprep = baseSelectQuery%(getcols, table, columnstring)
+    selectprep = baseSelectQuery%(getcols, table, columnstring) + suffix
     if len(data) == 0:
         selectprep = selectprep.replace(' WHERE ', '')
     cursor.execute(selectprep, valtuple)
@@ -105,9 +105,10 @@ def selectGameWithPlayer(cursor, playerid, otherdata, jointables={}, getcols='*'
         valtuple = tuple(otherdata[i] for i in othercols) + tuple(sum(((i,i) for i in playerid), ()))
     tablestring = "Games"
     joinstring = ' INNER JOIN '.join(["%s ON %s"%(i, jointables[i]) for i in jointables])
-    if len(joinstring) != '':
+    if len(joinstring) != 0:
         tablestring += " INNER JOIN "+joinstring
     selectprep = baseSelectQuery%(getcols, tablestring, totalcolumnstring)
+    print(selectprep)
     cursor.execute(selectprep, valtuple)
     return cursor
 
