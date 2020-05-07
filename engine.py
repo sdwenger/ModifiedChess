@@ -92,7 +92,7 @@ def showactivegames(cursor, params, connhandler):
                     INNER JOIN GameStatuses ON GameStatuses.Id=Games.Status'''
     uname = serverlogic.getunamefromsession(params[0], connhandler, True)
     whereprep = " WHERE (WhiteUser.Name=? OR BlackUser.Name=?) AND GameStatuses.Description='In Progress'"
-    selectclause = "SELECT Games.Id, WhiteUser.Name, BlackUser.Name, SUBSTR(Games.Position,70), Games.AwaitingPromote FROM "
+    selectclause = "SELECT Games.Id, WhiteUser.Name, BlackUser.Name, SUBSTR(Games.Position,70) FROM "
     rescursor = cursor.execute(selectclause + jointable + whereprep, (uname,uname))
     data = dblogic.unwrapCursor(rescursor)
     if len(data) == 0:
@@ -135,7 +135,7 @@ def respond(cursor, params, connhandler):
         cursor.connection.commit()
         rescursor = dblogic.selectCommon(cursor, "GameSubstatuses", {"Description": "In Progress"}, "Id, Superstatus")
         substatus = dblogic.unwrapCursor(rescursor, False)
-        gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Position": STARTPOSITION, "AwaitingPromote": 0})
+        gamecursor = dblogic.insert(cursor, "Games", {"White": whiteid, "Black": blackid, "Status": substatus[1], "Substatus": substatus[0], "Position": STARTPOSITION})
         serverlogic.notifyuser(challengedata[3], bytewrap("NOTIFY\r\nACCEPTCHALLENGE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid, whitename, blackname)))
         return bytewrap("SUCCESS\r\nACCEPT\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(challengeid, gamecursor.lastrowid, whitename, blackname))
     elif responsetype == "REJECT":
@@ -266,11 +266,13 @@ def resign(cursor, params, connhandler):
     uid = userdata['Id']
     gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Games.Id, Position, White, Black, WhiteUser.Name, BlackUser.Name, GameStatuses.Description")
     gamedata = dblogic.unwrapCursor(gamecursor, False, ['Id', 'Position', 'White', 'Black', 'WhiteName', 'BlackName', 'PrevStatus'])
+    #prevent resignation in completed game
     if gamedata["PrevStatus"] != "In Progress":
         return b"FAILURE\r\nGame is over\r\n\r\n"
     blackid = gamedata['Black']
     if len(gamedata) == 0:
         return b"FAILURE\r\nNo such game or you are not part of it\r\n\r\n"
+    #if opposing player only has lone king, change resign to draw by autoaccept
     position = gamedata['Position']
     isblackplayer = blackid==uid
     textstatus = 'White win' if isblackplayer else 'Black win'
@@ -296,13 +298,44 @@ def drawgame(cursor, params, connhandler):
     usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Games.Id, Position, White, Black, WhiteUser.Name, BlackUser.Name, GameStatuses.Description")
-    gamedata = dblogic.unwrapCursor(gamecursor, False, ['Id', 'Position', 'White', 'Black', 'WhiteName', 'BlackName', 'PrevStatus'])
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Games.Id, Position, White, Black, WhiteUser.Name, BlackUser.Name, GameStatuses.Description, Games.OfferRecipient, Games.LiveClaim, WhiteClaimFaults, BlackClaimFaults")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ['Id', 'Position', 'White', 'Black', 'WhiteName', 'BlackName', 'PrevStatus', 'Recipient', 'LiveClaim', 'WhiteClaimFaults', 'BlackClaimFaults'])
     if gamedata["PrevStatus"] != "In Progress":
         return b"FAILURE\r\nGame is over\r\n\r\n"
-    if drawtype == "CLAIM":
-        claimtype = params[3]
-        claimtime = params[4]
+    blackid = gamedata['Black']
+    if len(gamedata) == 0:
+        return b"FAILURE\r\nNo such game or you are not part of it\r\n\r\n"
+    position = gamedata['Position']
+    drawsubstatus = None
+    #first, check if recipient of offer/claim has more than lone king- if not, draw by autoaccept
+    isblackplayer = blackid==uid
+    oppname = gamedata['WhiteName'] if isblackplayer else gamedata['BlackName']
+    oppid = gamedata['White'] if isblackplayer else gamedata['Black']
+    isRecipientNonKing = (lambda x: (x!='K' and x.isupper())) if isblackplayer else (lambda x: (x!='k' and x.islower()))
+    receipientPieceGen = (i for i in position[:64] if isRecipientNonKing(i))
+    try:
+        next(receipientPieceGen)
+    except StopIteration:
+        drawsubstatus = "Autoaccept"
+    #check if live draw offer from opponent exists- if yes, draw by agreement
+    if drawsubstatus == None:
+        if gamedata['OfferRecipient'] == uid:
+            drawsubstatus = "Agreement"
+        elif drawtype == "CLAIM":
+            if gamedata['LiveClaim'] == 1:
+                return b"FAILURE\r\nCan only claim a draw once per turn.\r\n\r\n"
+            claimtype = params[3]
+            claimtime = params[4]
+            #THREEFOLD/FIFTYMOVE (if CLAIM)
+            #NOW/AFTERMOVE (if CLAIM)
+            if isblackplayer != (position[-1] == 'B'):
+                return b"FAILURE\r\nCan only claim a draw during your turn\r\n\r\n"
+        elif drawtype == "OFFER":
+            if gamedata['OfferRecipient'] == oppid:
+                return b"FAILURE\r\nDraw offer already live\r\n\r\n"
+            
+        else:
+            return b"FAILURE\r\nInvalid draw parameter\r\n\r\n"
         
 def killserver(cursor, params, connhandler):
     return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"

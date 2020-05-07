@@ -8,6 +8,7 @@ baseUpdateQuery = "UPDATE %s SET %s WHERE %s"
 baseSelectQuery = "SELECT %s FROM %s WHERE %s"
 
 conn = None
+autoCommit = True
 
 def connect():
     global conn
@@ -64,7 +65,8 @@ def insert(cursor, table, data):
     valtuple = tuple(data[i] for i in cols)
     insertprep = baseInsertQuery%(table, columnstring, prepvalues)
     cursor.execute(insertprep, valtuple)
-    cursor.connection.commit()
+    if autoCommit:
+        cursor.connection.commit()
     return cursor
     
 def updateCommon(cursor, table, data, rowid):
@@ -76,7 +78,8 @@ def updateCommon(cursor, table, data, rowid):
     valtuple = tuple(data[i] for i in cols) + (rowid,)
     updateprep = baseUpdateQuery%(table, setstring, wherestring)
     cursor.execute(updateprep, valtuple)
-    cursor.connection.commit()
+    if autoCommit:
+        cursor.connection.commit()
     return cursor
 
 def selectCommon(cursor, table, data, getcols='*', suffix=''):

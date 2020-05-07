@@ -446,6 +446,9 @@ def unwrapStatus(status, whiteIsMostRecent):
     else:
         return "In Progress","In Progress"
         
+def checkDrawClaim(gameid, is3x, newposition=None):
+#iterate through here
+    return False
     
 '''
 returns NORMAL, CHECK, STALEMATE, or CHECKMATE

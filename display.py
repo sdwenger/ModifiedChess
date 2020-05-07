@@ -221,8 +221,7 @@ def handleShowActiveGames(params):
     entryheight = 40
     uicomponents[path+'/header'].place(relx=0, relwidth=1, y=0, height=listbase)
     for i in games:
-        gameid, white, black, turn, promoteBit = i.split()
-        awaitingPromote = (promoteBit == 1)
+        gameid, white, black, turn = i.split()
         container = tk.Frame(uicomponents[path])
         uicomponents[path+'frames'][gameid] = container
         label = tk.Label(container, text="%s vs. %s"%(white, black))
@@ -233,7 +232,7 @@ def handleShowActiveGames(params):
 
         players = {"W":white, "B":black}
         isactiveplayer = receiver.uname == players[turn]
-        turntemplate = "%s pawn is awaiting promotion." if awaitingPromote else "%s move."
+        turntemplate = "%s move."
         possessive = "Your" if isactiveplayer else ("%s's"%players[turn])
         turnlabel = turntemplate % possessive
 
