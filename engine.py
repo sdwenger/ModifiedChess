@@ -318,6 +318,8 @@ def drawgame(cursor, params, connhandler):
     except StopIteration:
         drawsubstatus = "Autoaccept"
     #check if live draw offer from opponent exists- if yes, draw by agreement
+    updatedata = {}
+    lossbypenalty = False
     if drawsubstatus == None:
         if gamedata['OfferRecipient'] == uid:
             drawsubstatus = "Agreement"
@@ -326,16 +328,44 @@ def drawgame(cursor, params, connhandler):
                 return b"FAILURE\r\nCan only claim a draw once per turn.\r\n\r\n"
             claimtype = params[3]
             claimtime = params[4]
-            #THREEFOLD/FIFTYMOVE (if CLAIM)
-            #NOW/AFTERMOVE (if CLAIM)
+            is3x = claimtype=="THREEFOLD"
             if isblackplayer != (position[-1] == 'B'):
                 return b"FAILURE\r\nCan only claim a draw during your turn\r\n\r\n"
+            if claimtime=="NOW":
+                success = checkDrawClaim(gameid, is3x)
+                if success:
+                    drawsubstatus = "3 Fold Rep" if is3x else "50 Move"
+                else:
+                    updatedata['LiveClaim'] = 1
+                    updatedata['ClaimIsDeferred'] = 0
+                    updatedata['OfferRecipient'] = oppid
+                    faultindex = "BlackClaimFaults" if isblackplayer else "WhiteClaimFaults"
+                    updatedata[faultindex] = gamedata[faultindex]+1
+                    if updatedata[faultindex] >= 3:
+                        lossbypenalty = True
+            else:
+                updatedata['LiveClaim'] = 1
+                updatedata['ClaimIsDeferred'] = 1
+                updatedata['ClaimIs3x'] = (1 if is3x else 0)
+                updatedata['OfferRecipient'] = oppid
         elif drawtype == "OFFER":
             if gamedata['OfferRecipient'] == oppid:
                 return b"FAILURE\r\nDraw offer already live\r\n\r\n"
-            
         else:
             return b"FAILURE\r\nInvalid draw parameter\r\n\r\n"
+    statuscursor = None
+    if drawsubstatus != None:
+        statuscursor = dblogic.selectCommon(cursor, "GameStatuses INNER JOIN GameSubstatuses ON GameStatuses.Id=GameSubstatuses.Superstatus", {"GameSubstatuses.Description": drawsubstatus}, "GameStatuses.Id, GameSubstatuses.Id")
+    elif lossbypenalty:
+        textstatus = "White win" if isblackplayer else "Black win"
+        statuscursor = dblogic.selectCommon(cursor, "GameStatuses INNER JOIN GameSubstatuses ON GameStatuses.Id=GameSubstatuses.Superstatus", {"GameSubstatuses.Description": "Penalty", "GameStatuses.Description": textstatus}, "GameStatuses.Id, GameSubstatuses.Id")
+    if statuscursor != None:
+        statusdata = dblogic.unwrapcursor(statuscursor, False, ["StatusId","SubstatusId"])
+        updatedata["Status"] = statusdata["StatusId"]
+        updatedata["Substatus"] = statusdata["SubstatusId"]
+    #add something here or check for updatedata['Status'] later to serverlogic.notify opponent
+    dblogic.updateCommon(cursor, "Games", updatedata, gameid)
+    return bytewrap("SUCCESS\r\n\r\n")
         
 def killserver(cursor, params, connhandler):
     return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"
