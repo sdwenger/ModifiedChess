@@ -304,7 +304,8 @@ def handleNotify(params):
     notification = params[0]
     notifparams = params[1:]
     if notification=="OPPMOVE" or notification=="ENEMYPROMOTE":
-        gameid, annotation, strsequence, newposition = notifparams
+        gameid, annotation, strsequence, newposition, gamestatus, gamesubstatus = notifparams
+        print(gamestatus, gamesubstatus)
         movesequence = int(strsequence)
         if '/gameframe/gameboard/gameid' in uicomponents and gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
@@ -389,7 +390,8 @@ def handleNotify(params):
 
 def handleMove(params):
     if params[0] == "SUCCESS":
-        gameid, annotation, strsequence, newposition = params[1:]
+        gameid, annotation, strsequence, newposition, gamestatus, gamesubstatus = params[1:]
+        print(gamestatus, gamesubstatus)
         movesequence = int(strsequence)
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
@@ -417,9 +419,10 @@ handlePromote = handleMove
 
 def handleShowMoveHistory(params):
     if params[0] == "SUCCESS":
-        gameid, movedata = params[1:]
+        gameid = params[1]
+        movedata = params[2] if len(params) >= 3 else None
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
-            moves = movedata.split()
+            moves = [] if movedata==None else movedata.split()
             whitemoves = moves[::2]
             blackmoves = moves[1::2]
             for i in range(len(whitemoves)):

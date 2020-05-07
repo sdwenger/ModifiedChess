@@ -1,7 +1,7 @@
 import math
 import itertools
 
-NORMAL, CHECK, DOUBLECHECK, STALEMATE, CHECKMATE, INSUFFICIENT, AUTOACCEPT = range(7)
+NORMAL, CHECK, DOUBLECHECK, STALEMATE, CHECKMATE, INSUFFICIENT, AUTOACCEPT, CLAIM3X, CLAIM50, CLAIMFAULTLOSS = range(10)
 indeces = set(range(1,9))
 directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 knightMoves = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (1, -2), (-1, 2), (1, 2)]
@@ -52,10 +52,12 @@ def move(position, initial, final, allInformation=True):
     #begin- calculating if OPPONENT will have en passant available
     enpassant = '-'
     isPromotion = False
-    if mover.lower() == 'p':
-        promotionrow = 8 if mover.isupper() else 1
-        xi,yi = indexToXY(initialIndex)
-        xf,yf = indexToXY(finalIndex)
+    promotionrow = 8 if mover.isupper() else 1
+    xi,yi = indexToXY(initialIndex)
+    xf,yf = indexToXY(finalIndex)
+    if mover.lower() == 'k' and captured.lower() == 'p' and captured.isupper() == mover.isupper() and yi==promotionrow:
+        isPromotion = True
+    elif mover.lower() == 'p':
         if yf == promotionrow:
             isPromotion = True
         else:
@@ -249,23 +251,22 @@ def isValidMove(position, initial, final, knownSafe=False):
     testdata[indexi] = captured if isAlly(mover, captured) else '-'
     return len(checkStatus(''.join(testdata), False)) == 0
 
-def pieceValidMoves(position, square):
+def pieceValidMoves(position, square, ignoreOutOfTurn=False):
     turn = position[-1]
     x,y = squareNameToXY(square)
     index = xyToIndex(x,y)
     piece = position[index]
     if piece == '-':
         return None #blank square
-    if promoteSquare(position) != None:
-        return None #moving mid-promotion
-    if (turn=="W") != (piece.isupper()):
-        return None #out of turn piece
+    if not ignoreOutOfTurn:
+        if promoteSquare(position) != None:
+            return None #moving mid-promotion
+        if (turn=="W") != (piece.isupper()):
+            return None #out of turn piece
     piecetype = piece.lower()
-    threats = checkStatus(position)
+    threats = checkStatus(position, False)
     check = threats if (type(threats) == int) else NORMAL if len(threats)==0 else CHECK if len(threats)==1 else DOUBLECHECK
     if piecetype == 'k':
-        if check in [CHECKMATE, STALEMATE]:
-            return [[],[]]
         prechecksquares = getnormalkingmoves(position, turn=="W", x, y)
         safesquares = []
         for xf,yf in prechecksquares:
@@ -289,7 +290,7 @@ def pieceValidMoves(position, square):
         allyKing = 'K' if piece.isupper() else 'k'
         kingindex = position.index(allyKing)
         kingx,kingy = indexToXY(kingindex)
-        if check in [CHECKMATE, STALEMATE, DOUBLECHECK]:
+        if check == DOUBLECHECK:
             return [[],[]]
         elif check == CHECK and pindistance != 0: #pinned pieces can't help with check
             return [[],[]]
@@ -395,14 +396,14 @@ def pinStatus(position, x,y, piece):
     
 def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3x, gameid, cursor):
     turn = position[69]
-    checkStatus = checkStatus(lookForDoubleCheck=False)
-    if checkStatus in [CHECKMATE, STALEMATE]:
-        return checkStatus
+    check = checkStatus(position, lookForDoubleCheck=False)
+    if check in [CHECKMATE, STALEMATE]:
+        return check
     allsquares = position[:64]
     minorPiece = False
     sufficientMaterial = False
     for i in allsquares:
-        piecetype = allsquares.lower()
+        piecetype = i.lower()
         if piecetype in ['q','r','p']:
             sufficientMaterial = True
         elif piecetype in ['b','n']:
@@ -426,6 +427,25 @@ def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3
         pass
     return NORMAL
     #use sufficientMaterial to flag insufficient material draw
+    
+def unwrapStatus(status, whiteIsMostRecent):
+    if status==STALEMATE:
+        return "Draw","Stalemate"
+    elif status==CHECKMATE:
+        return ("White wins" if whiteIsMostRecent else "Black wins"), "Checkmate"
+    elif status==INSUFFICIENT:
+        return "Draw","Insufficient Material"
+    elif status==AUTOACCEPT:
+        return "Draw","AutoAccept"
+    elif status==CLAIM3X:
+        return "Draw","3-fold repetition"
+    elif status==CLAIM50:
+        return "Draw","50 Move Rule"
+    elif status==CLAIMFAULTLOSS:
+        return ("Black wins" if whiteIsMostRecent else "White wins"),"Penalty"
+    else:
+        return "In progress","In progress"
+        
     
 '''
 returns NORMAL, CHECK, STALEMATE, or CHECKMATE
@@ -469,7 +489,7 @@ def checkStatus(position, checkTerminalConditions=True, lookForDoubleCheck=True)
     turnsquares = [indexToSquareName(i) for i in range(64) if pieceturn(position[i])]
     validMovesExist = True
     for i in turnsquares:
-        moves = pieceValidMoves(position, i)
+        moves = pieceValidMoves(position, i, True)
         if len(sum(moves, [])) != 0:
             break
     else: #no valid moves on any piece

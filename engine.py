@@ -183,7 +183,8 @@ def move(cursor, params, connhandler):
         return b"FAILURE\r\nOut of turn play\r\n\r\n"
     if chesslogic.isValidMove(position, initial, final):
         newposition, captured, isEnPassant, mover = chesslogic.move(position, initial, final)
-        status = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["DeferredClaim"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
+        gamestatus = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["DeferredClaim"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
+        status, substatus = chesslogic.unwrapStatus(gamestatus, turn=='W')
         dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
         movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "COUNT(Id)")
         sequence = dblogic.unwrapCursor(movecountcursor, False)[0] + 1
@@ -195,8 +196,8 @@ def move(cursor, params, connhandler):
                                         "PosBefore": position, "PosAfter": newposition,
                                         "Annotated": annotation})
         oppname = gamedata['BlackName'] if turn == 'W' else gamedata['WhiteName']
-        serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nOPPMOVE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, sequence, newposition)))
-        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, sequence, newposition))
+        serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nOPPMOVE\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, sequence, newposition, status, substatus)))
+        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, sequence, newposition, status, substatus))
     return b"Failure\r\nNot yet implemented\r\n\r\n"
 
 def promote(cursor, params, connhandler):
@@ -216,19 +217,21 @@ def promote(cursor, params, connhandler):
         print(gamedata)
         return b"FAILURE\r\nNo pending promotion\r\n\r\n"
     newposition = chesslogic.promote(position, promotesquare, promoteType)
+    gamestatus = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["DeferredClaim"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
+    status, substatus = chesslogic.unwrapStatus(gamestatus, turn=='W')
     dblogic.updateCommon(cursor, "Games", {"Position": newposition}, gameid)
     movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "Id, Sequence, SqFrom, SqTo, Piece, Captured", suffix=" ORDER BY Sequence DESC LIMIT 1")
-    movedata = dblogic.unwrapCursor(movecountcursor, False, ["Id","Sequence","SqFrom","SqTo","Piece","Captured"])
+    movedata = dblogic.unwrapCursor(movecountcursor, False, ["Id","Sequence","Initial","Final","Piece","Captured"])
     moveid = movedata["Id"]
     dblogic.insert(cursor, "Promotions", {"Move": moveid,
                                           "Piece": promoteType.__getattribute__('upper' if turn=='W' else 'lower')(),
                                           "PosBefore": position,
                                           "PosAfter": newposition})
-    newannotation = chesslogic.annotateMove(position, newposition, movedata['Initial'], movedata['Final'], movedata['Piece'], movedata['Captured'])
+    newannotation = chesslogic.annotateMove(position, newposition, movedata['Initial'], movedata['Final'], movedata['Piece'], movedata['Captured'], promoteType)
     dblogic.updateCommon(cursor, "Moves", {"Annotated":newannotation}, moveid)
     oppname = gamedata['BlackName'] if turn == 'W' else gamedata['WhiteName']
-    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nENEMYPROMOTE\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, movedata["Sequence"], newposition)))
-    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, annotation, movedata["Sequence"], newposition))
+    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nENEMYPROMOTE\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, newannotation, movedata["Sequence"], newposition, status, substatus)))
+    return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, newannotation, movedata["Sequence"], newposition, status, substatus))
 
 def showmovehistory(cursor, params, connhandler):
     gameid, sessionid = params
@@ -248,6 +251,8 @@ def showmovehistory(cursor, params, connhandler):
             i['Annotation'] = chesslogic.annotateMove(i['PosBefore'],i['PosAfter'],i['From'],i['To'],i['Piece'],i['Captured'],i['PromotedTo'])
             dblogic.updateCommon(cursor, "Moves", {"Annotated": i["Annotation"]}, i["Id"])
     movestring = ' '.join([i['Annotation'] for i in movesdata])
+    if movestring=='':
+        return bytewrap("SUCCESS\r\n%s\r\n\r\n"%(gameid))
     return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(gameid, movestring))
 
 def killserver(cursor, params, connhandler):
