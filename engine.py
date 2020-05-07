@@ -274,7 +274,7 @@ def resign(cursor, params, connhandler):
     position = gamedata['Position']
     isblackplayer = blackid==uid
     textstatus = 'White win' if isblackplayer else 'Black win'
-    isWinnerNonKing = lambda x: (x!='K' and x.isupper()) if isblackplayer else lambda x: (x!='k' and x.islower())
+    isWinnerNonKing = (lambda x: (x!='K' and x.isupper())) if isblackplayer else (lambda x: (x!='k' and x.islower()))
     winningPieceGen = (i for i in position[:64] if isWinnerNonKing(i))
     try:
         next(winningPieceGen)
@@ -286,9 +286,23 @@ def resign(cursor, params, connhandler):
     statusdata = dblogic.unwrapCursor(statuscursor, False, ["StatusId", "SubstatusId"])
     statusid, substatusid = statusdata["StatusId"], statusdata["SubstatusId"]
     dblogic.updateCommon(cursor, "Games", {"Status":statusid, "Substatus": substatusid}, gameid)
-    oppname = gamedata['BlackName'] if isblackplayer else gamedata['WhiteName']
+    oppname = gamedata['WhiteName'] if isblackplayer else gamedata['BlackName']
     serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\nSTATUSCHANGE\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gameid, textstatus, textsubstatus)))
     return bytewrap("SUCCESS\r\n%s\r\n%s\r\n\r\n"%(textstatus, textsubstatus))
+        
+def drawgame(cursor, params, connhandler):
+    gameid, sessionid, drawtype = params[:3]
+    uname = serverlogic.getunamefromsession(sessionid, connhandler, True)
+    usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
+    userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
+    uid = userdata['Id']
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Games.Id, Position, White, Black, WhiteUser.Name, BlackUser.Name, GameStatuses.Description")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ['Id', 'Position', 'White', 'Black', 'WhiteName', 'BlackName', 'PrevStatus'])
+    if gamedata["PrevStatus"] != "In Progress":
+        return b"FAILURE\r\nGame is over\r\n\r\n"
+    if drawtype == "CLAIM":
+        claimtype = params[3]
+        claimtime = params[4]
         
 def killserver(cursor, params, connhandler):
     return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"

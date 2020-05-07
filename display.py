@@ -319,6 +319,7 @@ def handleNotify(params):
     notification = params[0]
     notifparams = params[1:]
     if notification=="STATUSCHANGE":
+        print(params)
         gameid, gamestatus, gamesubstatus = params[1:]
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
@@ -470,6 +471,12 @@ def handleShowMoveHistory(params):
                     uicomponents[blackpath] = tk.Label(uicomponents['/gameframe/movepanel'], text=blackmoves[i])
                     uicomponents[blackpath].place(relx=.6, relwidth=.25, height=30, y=30*i+100)
 
+def handleResign(params):
+    if params[0] == "SUCCESS":
+        print(params)
+        gamestatus, gamesubstatus = params[1:]
+        uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
+
 def setboard(squares, turn):
     global checkSquare, promotionInProgress
     oldchecksquare = checkSquare
@@ -514,7 +521,8 @@ functions = {
     "NOTIFY" : handleNotify,
     "MOVE" : handleMove,
     "PROMOTE" : handlePromote,
-    "SHOWMOVEHISTORY": handleShowMoveHistory
+    "SHOWMOVEHISTORY": handleShowMoveHistory,
+    "RESIGN": handleResign
 }
 
 def execGen(gen):

@@ -103,7 +103,8 @@ success or failure message
 
 DRAWGAME
 game id
-OFFER/ACCEPT/CLAIM (last line unless it's CLAIM)
+session id
+OFFER/CLAIM (last line unless it's CLAIM)
 THREEFOLD/FIFTYMOVE (if CLAIM)
 NOW/AFTERMOVE (if CLAIM)
 -returns
