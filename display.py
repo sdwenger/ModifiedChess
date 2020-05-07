@@ -20,6 +20,9 @@ validcolor = "Blue"
 specialcolor = "#FF00FF"
 checkcolor = "Red"
 
+def blankFunction(*param):
+    pass
+
 def getNormalColor(row, column):
     colors = ["Black", "White"]
     return colors[(row+column)%2]
@@ -73,6 +76,18 @@ class GameViewer:
         uicomponents['/gameframe/gameboard/gameid'] = self.gameid
         request = bytes("GETGAMESTATE\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
         receiver.sock.send(request)
+        count = 1
+        finished = False
+        while not finished:
+            pathtemplate = '/gameframe/movepanel/%s%%s'%count
+            for i in ('label','white','black'):
+                path = pathtemplate%i
+                if path in uicomponents:
+                    uicomponents[path].place_forget()
+                    del uicomponents[path]
+                else:
+                    finished = True
+            count += 1
         request = bytes("SHOWMOVEHISTORY\r\n%s\r\n%s\r\n\r\n"%(self.gameid, receiver.sessionid), "UTF-8")
         receiver.sock.send(request)
 
@@ -303,7 +318,11 @@ def handleGetGameState(params):
 def handleNotify(params):
     notification = params[0]
     notifparams = params[1:]
-    if notification=="OPPMOVE" or notification=="ENEMYPROMOTE":
+    if notification=="STATUSCHANGE":
+        gameid, gamestatus, gamesubstatus = params[1:]
+        if gameid == uicomponents['/gameframe/gameboard/gameid']:
+            uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
+    elif notification=="OPPMOVE" or notification=="ENEMYPROMOTE":
         gameid, annotation, strsequence, newposition, gamestatus, gamesubstatus = notifparams
         print(gamestatus, gamesubstatus)
         movesequence = int(strsequence)
@@ -327,6 +346,13 @@ def handleNotify(params):
                     uicomponents[blackpath].place_forget()
                 uicomponents[blackpath] = tk.Label(uicomponents['/gameframe/movepanel'], text=annotation)
                 uicomponents[blackpath].place(relx=.6, relwidth=.25, height=30, y=30*movesequence+70)
+        if gamestatus != "In Progress":
+            '''basepath = '/gameframe/gameboard'
+            for i in range(64):
+                square = chesslogic.indexToSquareName(i)
+                path = basepath + '/' + square
+                uicomponents[path].bind("<Button-1>", blankFunction)'''
+            uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
     elif notification=="RESCINDCHALLENGE":
         challengeid, = notifparams
         path = '/homeframe/inchallenges'
@@ -391,7 +417,6 @@ def handleNotify(params):
 def handleMove(params):
     if params[0] == "SUCCESS":
         gameid, annotation, strsequence, newposition, gamestatus, gamesubstatus = params[1:]
-        print(gamestatus, gamesubstatus)
         movesequence = int(strsequence)
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             squares = newposition[:64]
@@ -414,6 +439,13 @@ def handleMove(params):
                     uicomponents[blackpath].place_forget()
                 uicomponents[blackpath] = tk.Label(uicomponents['/gameframe/movepanel'], text=annotation)
                 uicomponents[blackpath].place(relx=.6, relwidth=.25, height=30, y=30*movesequence+70)
+            if gamestatus != "In Progress":
+                '''basepath = '/gameframe/gameboard'
+                for i in range(64):
+                    square = chesslogic.indexToSquareName(i)
+                    path = basepath + '/' + square
+                    uicomponents[path].bind("<Button-1>", blankFunction)'''
+                uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
 
 handlePromote = handleMove
 
@@ -617,6 +649,9 @@ def cancelchallenge():
     servershowchallenges()
     servershowactivegames()
 
+def serverresign():
+    receiver.sock.send(bytes('RESIGN\r\n%s\r\n%s\r\n\r\n'%(uicomponents['/gameframe/gameboard/gameid'], receiver.sessionid), "UTF-8"))
+
 def packsquares(blackview=False):
     basepath = '/gameframe/gameboard'
     initpath = "%s/%s"%(basepath, "squaresInitialized")
@@ -749,7 +784,7 @@ uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/game
 uicomponents['/gameframe/gamecontrol/offerdraw'].place(x=75,y=50,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/claimdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Claim Draw")
 uicomponents['/gameframe/gamecontrol/claimdraw'].place(x=75,y=100,width=135,height=40)
-uicomponents['/gameframe/gamecontrol/resign'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Resign")
+uicomponents['/gameframe/gamecontrol/resign'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Resign", command=serverresign)
 uicomponents['/gameframe/gamecontrol/resign'].place(x=75,y=150,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/claimdrawoptions'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
 uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])

@@ -432,19 +432,19 @@ def unwrapStatus(status, whiteIsMostRecent):
     if status==STALEMATE:
         return "Draw","Stalemate"
     elif status==CHECKMATE:
-        return ("White wins" if whiteIsMostRecent else "Black wins"), "Checkmate"
+        return ("White win" if whiteIsMostRecent else "Black win"), "Checkmate"
     elif status==INSUFFICIENT:
         return "Draw","Insufficient Material"
     elif status==AUTOACCEPT:
-        return "Draw","AutoAccept"
+        return "Draw","Autoaccept"
     elif status==CLAIM3X:
-        return "Draw","3-fold repetition"
+        return "Draw","3 Fold Rep"
     elif status==CLAIM50:
-        return "Draw","50 Move Rule"
+        return "Draw","50 Move"
     elif status==CLAIMFAULTLOSS:
-        return ("Black wins" if whiteIsMostRecent else "White wins"),"Penalty"
+        return ("Black win" if whiteIsMostRecent else "White win"),"Penalty"
     else:
-        return "In progress","In progress"
+        return "In Progress","In Progress"
         
     
 '''

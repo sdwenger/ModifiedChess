@@ -63,7 +63,7 @@ def initTables(includemetadata, conn=None):
 def initMetadata(conn):
     commands = [
         "INSERT INTO GameStatuses (Description, WhiteHalfPoints, BlackHalfPoints) VALUES ('In Progress', 0, 0)",
-        "INSERT INTO GameSubstatuses (Description, Superstatus) VALUES ('In progress', %s)",
+        "INSERT INTO GameSubstatuses (Description, Superstatus) VALUES ('In Progress', %s)",
         "INSERT INTO GameStatuses (Description, WhiteHalfPoints, BlackHalfPoints) VALUES ('White win', 2, 0)",
         "INSERT INTO GameSubstatuses (Description, Superstatus) VALUES ('Checkmate', %s)",
         "INSERT INTO GameSubstatuses (Description, Superstatus) VALUES ('Resign', %s)",
