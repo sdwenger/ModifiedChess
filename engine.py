@@ -178,8 +178,8 @@ def move(cursor, params, connhandler):
     usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name, ClaimIsDeferred, ClaimIs3x, OfferRecipient, GameStatuses.Description")
-    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName", "ClaimIsDeferred", "ClaimIs3x", "OfferRecipient", "GameStatus"])
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name, LiveClaim, ClaimIsDeferred, ClaimIs3x, OfferRecipient, GameStatuses.Description, WhiteClaimFaults, BlackClaimFaults")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName", "LiveClaim", "ClaimIsDeferred", "ClaimIs3x", "OfferRecipient", "GameStatus", "WhiteClaimFaults", "BlackClaimFaults"])
     if gamedata["GameStatus"] != "In Progress":
         return b"FAILURE\r\nGame is over.\r\n\r\n"
     position = gamedata['Position']
@@ -189,8 +189,33 @@ def move(cursor, params, connhandler):
     if (turn == 'W') != (gamedata['WhiteId'] == uid):
         return b"FAILURE\r\nOut of turn play\r\n\r\n"
     if chesslogic.isValidMove(position, initial, final):
+        whiteid = gamedata["WhiteId"]
+        blackid = gamedata["BlackId"]
+        liveclaim = (gamedata["LiveClaim"]==1) and (gamedata["ClaimIsDeferred"]==1)
+        is3x = bool(gamedata["ClaimIs3x"])
+        offerrecipientid = gamedata["OfferRecipient"]
+        isblackplayer = (uid == blackid)
+
         newposition, captured, isEnPassant, mover = chesslogic.move(position, initial, final)
-        gamestatus = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["ClaimIsDeferred"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
+        gamestatus = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'])
+        fault = False
+        if gamestatus == chesslogic.NORMAL:
+            gamestatus = chesslogic.checkAutoAccept(position, offerrecipientid, whiteid, blackid)
+        if gamestatus == chesslogic.NORMAL:
+            print("Evaluation: %s %s"%(liveclaim, turn))
+            if liveclaim:
+                print("Evaluating")
+                isdraw = chesslogic.checkDrawClaim(cursor, gameid, is3x, {"Position":newposition,"From":initial,"To":final,"Mover":mover,"Captured":captured})
+                print("IsDraw: %s"%isdraw)
+                if isdraw:
+                    gamestatus = chesslogic.CLAIM3X if is3x else chesslogic.CLAIM50
+                else:
+                    fault = True
+                    faultindex = "BlackClaimFaults" if isblackplayer else "WhiteClaimFaults"
+                    faults = nullwrap(gamedata[faultindex],0)+1
+                    if faults >= 3:
+                        gamestatus = chesslogic.CLAIMFAULTLOSS
+                    
         status, substatus = chesslogic.unwrapStatus(gamestatus, turn=='W')
         statuscursor = dblogic.selectCommon(cursor, "GameStatuses INNER JOIN GameSubstatuses ON GameStatuses.Id=GameSubstatuses.Superstatus", {"GameStatuses.Description":status, "GameSubstatuses.Description":substatus}, "GameStatuses.Id, GameSubstatuses.Id")
         statusdata = dblogic.unwrapCursor(statuscursor, False, ["StatusId","SubstatusId"])
@@ -198,6 +223,12 @@ def move(cursor, params, connhandler):
                                                 "LiveClaim": 0, "ClaimIsDeferred": 0}
         if gamedata["OfferRecipient"] == uid:
             gameupdate["OfferRecipient"] = None
+        if fault:
+            print("Claim fault")
+            print(faultindex)
+            print(faults)
+            gameupdate[faultindex] = faults
+        print(gameupdate)
         dblogic.updateCommon(cursor, "Games", gameupdate, gameid)
         movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "COUNT(Id)")
         sequence = dblogic.unwrapCursor(movecountcursor, False)[0] + 1
@@ -344,7 +375,7 @@ def drawgame(cursor, params, connhandler):
             if isblackplayer != (position[-1] == 'B'):
                 return b"FAILURE\r\nCan only claim a draw during your turn\r\n\r\n"
             if claimtime=="NOW":
-                success = chesslogic.checkDrawClaim(gameid, is3x)
+                success = chesslogic.checkDrawClaim(cursor, gameid, is3x)
                 if success:
                     drawsubstatus = "3 Fold Rep" if is3x else "50 Move"
                     response = "COMPLETEDDRAW\r\n%s"%drawsubstatus

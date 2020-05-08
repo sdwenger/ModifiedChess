@@ -1,10 +1,19 @@
 import math
 import itertools
+import dblogic
 
 NORMAL, CHECK, DOUBLECHECK, STALEMATE, CHECKMATE, INSUFFICIENT, AUTOACCEPT, CLAIM3X, CLAIM50, CLAIMFAULTLOSS = range(10)
 indeces = set(range(1,9))
 directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 knightMoves = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (1, -2), (-1, 2), (1, 2)]
+
+def constrain(val, low, high):
+    if val < low:
+        return low
+    elif val > high:
+        return high
+    else:
+        return val
 
 #move is already assumed to be valid; input here is screened through isValidMove
 def move(position, initial, final, allInformation=True):
@@ -394,7 +403,7 @@ def pinStatus(position, x,y, piece):
     return ((0,0), 0)
     
     
-def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3x, gameid, cursor):
+def terminalStatus(position, whiteid, blackid):
     turn = position[69]
     check = checkStatus(position, lookForDoubleCheck=False)
     if check in [CHECKMATE, STALEMATE]:
@@ -413,6 +422,10 @@ def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3
             break
     else:
         return INSUFFICIENT
+    return NORMAL
+    
+def checkAutoAccept(position, offerrecipientid, whiteid, blackid):
+    allsquares = position[:64]
     if offerrecipientid != None:
         isRecipientNonKing = lambda x: (x!='K' and x.isupper()) if offerrecipientid==whiteid else lambda x: (x!='k' and x.islower())
         for i in allsquares:
@@ -420,13 +433,7 @@ def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3
                 break
         else:
             return AUTOACCEPT
-    evaluateClaim = (claimantid==whiteid and turn=='B') or (claimantid==blackid and turn=='W')
-    if evaluateClaim:
-        movecursor = dblogic.selectCommon(cursor, "Moves", {"Moves.Game": gameid}, "PosBefore, SqFrom, SqTo, Piece, Captured", " ORDER BY Moves.Id DESC")
-        positions = dblogic.unwrapCursor(movecursor, True, ["Position","From","To","Mover","Captured"])
-        pass
     return NORMAL
-    #use sufficientMaterial to flag insufficient material draw
     
 def unwrapStatus(status, whiteIsMostRecent):
     if status==STALEMATE:
@@ -446,8 +453,60 @@ def unwrapStatus(status, whiteIsMostRecent):
     else:
         return "In Progress","In Progress"
         
-def checkDrawClaim(gameid, is3x, newposition=None):
-#iterate through here
+#if newposition is None, evaluate with current position being PosAfter on the most recent move
+#otherwise, evalue with newposition being the latest in the game (with most recent PosAfter being newposition's predecessor)
+def checkDrawClaim(cursor, gameid, is3x, newposition=None):
+    print("Is3x: %s"%is3x)
+    movecursor = dblogic.selectCommon(cursor, "Moves", {"Moves.Game": gameid}, "PosAfter, SqFrom, SqTo, Piece, Captured", " ORDER BY Moves.Id DESC")
+    positions = dblogic.unwrapCursor(movecursor, True, ["Position","From","To","Mover","Captured"])
+    if len(positions)==0:
+        return False
+    if newposition==None:
+        newposition = positions[0]
+    else:
+        positions.insert(0, newposition)
+    if is3x:
+        reps = 0
+        for i in positions:
+            print(i["Position"])
+            if i["Position"] == newposition["Position"]:
+                print("Increment")
+                reps += 1
+            if reps >= 3:
+                return True
+        if reps == 2 and newposition["Position"] == "RNBQKBNRPPPPPPPP--------------------------------pppppppprnbqkbnr++++-W":
+            return True
+    else:
+        moves = 0
+        for i in reversed(positions):
+            mover = i["Mover"]
+            captured = i["Captured"]
+            if isEnemy(mover, captured):
+                moves = 0
+            isSwap = isAlly(mover, captured)
+            isPawn = (mover.lower()=='p')
+            isPawnSwap = isSwap and captured.lower()=='p'
+            hasPawn = False
+            if isPawn:
+                hasPawn = True
+                xi,yi = squareNameToXY(i["From"])
+                xf,yf = squareNameToXY(i["To"])
+            elif isPawnSwap:
+                hasPawn = True
+                xi,yi = squareNameToXY(i["To"]) #inverted because the pawn's motion is opposite the real motion
+                xf,yf = squareNameToXY(i["From"])
+            if hasPawn:
+                if yf in [1,8]:
+                    moves = 0
+                else:
+                    moves -= 10*(yf-yi)
+                    if yf<yi:
+                        moves += 1
+            else:
+                moves += 1
+            moves = constrain(moves, 0, 100)
+        if moves >= 100:
+            return True
     return False
     
 '''

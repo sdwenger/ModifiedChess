@@ -329,7 +329,7 @@ def setofferdraw(offertype):
             uicomponents[paths[i]].place_forget()
 
 def setclaimdraw(claimed, inTurn):
-    paths = '/gameframe/gamecontrol/alreadyclaimed','/gameframe/gamecontrol/claimdraw'
+    paths = '/gameframe/gamecontrol/alreadyclaimed','/gameframe/gamecontrol/claimdraw','/gameframe/gamecontrol/claimdrawoptions'
     path = ('/gameframe/gamecontrol/alreadyclaimed' if claimed else '/gameframe/gamecontrol/claimdraw') if inTurn else ''
     for i in paths:
         if i==path:
@@ -353,6 +353,7 @@ def handleNotify(params):
         if '/gameframe/gameboard/gameid' in uicomponents and gameid == uicomponents['/gameframe/gameboard/gameid']:
             if offerstatus=="OUT":
                 setofferdraw("NONE")
+            setclaimdraw(False, True)
             squares = newposition[:64]
             turn = newposition[69]
             setboard(squares, turn)
@@ -447,6 +448,7 @@ def handleMove(params):
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             if offerstatus=="IN":
                 setofferdraw("NONE")
+            setclaimdraw(False, False)
             squares = newposition[:64]
             turn = newposition[69]
             ischeck = len(chesslogic.checkStatus(newposition, False)) != 0
@@ -717,6 +719,7 @@ def serverclaimdraw():
     servervalues = {"3 Fold":"THREEFOLD", "50 Move":"FIFTYMOVE", "Now":"NOW", "After Move":"AFTERMOVE"}
     reason = uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].get()
     when = uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].get()
+    setclaimdraw(True, True)
     receiver.sock.send(bytes('DRAWGAME\r\n%s\r\n%s\r\nCLAIM\r\n%s\r\n%s\r\n\r\n'%(uicomponents['/gameframe/gameboard/gameid'], receiver.sessionid, servervalues[reason], servervalues[when]), "UTF-8"))
 
 def packsquares(blackview=False):
