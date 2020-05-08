@@ -15,6 +15,7 @@ validSquares = []
 specialSquares = []
 checkSquare = None
 promotionInProgress = False
+offerstatus = None
 
 selectcolor = "#00FF00"
 validcolor = "Blue"
@@ -318,6 +319,8 @@ def handleGetGameState(params):
     setclaimdraw(int(params[6])==1, params[2]==turn)
 
 def setofferdraw(offertype):
+    global offerstatus
+    offerstatus = offertype
     paths = {"NONE":'/gameframe/gamecontrol/offerdraw', "IN":'/gameframe/gamecontrol/acceptdraw', "OUT":'/gameframe/gamecontrol/alreadyoffered'}
     for i in paths:
         if i==offertype:
@@ -348,6 +351,8 @@ def handleNotify(params):
         print(gamestatus, gamesubstatus)
         movesequence = int(strsequence)
         if '/gameframe/gameboard/gameid' in uicomponents and gameid == uicomponents['/gameframe/gameboard/gameid']:
+            if offerstatus=="OUT":
+                setofferdraw("NONE")
             squares = newposition[:64]
             turn = newposition[69]
             setboard(squares, turn)
@@ -440,6 +445,8 @@ def handleMove(params):
         gameid, annotation, strsequence, newposition, gamestatus, gamesubstatus = params[1:]
         movesequence = int(strsequence)
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
+            if offerstatus=="IN":
+                setofferdraw("NONE")
             squares = newposition[:64]
             turn = newposition[69]
             ischeck = len(chesslogic.checkStatus(newposition, False)) != 0
@@ -842,9 +849,9 @@ uicomponents['/gameframe/gamecontrol/back'] = tk.Button(uicomponents['/gameframe
 uicomponents['/gameframe/gamecontrol/back'].place(x=75,y=0,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Offer Draw", command=serverdrawoffer)
 uicomponents['/gameframe/gamecontrol/acceptdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Accept Draw", command=serverdrawoffer)
-uicomponents['/gameframe/gamecontrol/alreadyoffered'] = tk.Label(uicomponents['/gameframe/gamecontrol'], text="You have offered a draw this turn.")
+uicomponents['/gameframe/gamecontrol/alreadyoffered'] = tk.Label(uicomponents['/gameframe/gamecontrol'], text="Draw Offered")
 uicomponents['/gameframe/gamecontrol/claimdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Claim Draw", command=opendrawclaimpanel)
-uicomponents['/gameframe/gamecontrol/alreadyclaimed'] = tk.Label(uicomponents['/gameframe/gamecontrol'], text="You have claimed a draw this turn.")
+uicomponents['/gameframe/gamecontrol/alreadyclaimed'] = tk.Label(uicomponents['/gameframe/gamecontrol'], text="Draw Claimed")
 uicomponents['/gameframe/gamecontrol/resign'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Resign", command=serverresign)
 uicomponents['/gameframe/gamecontrol/resign'].place(x=75,y=150,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/claimdrawoptions'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])

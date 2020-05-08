@@ -178,8 +178,8 @@ def move(cursor, params, connhandler):
     usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name, DeferredClaim, ClaimIs3x, OfferRecipient, GameStatuses.Description")
-    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName", "DeferredClaim", "ClaimIs3x", "OfferRecipient", "GameStatus"])
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id", "GameStatuses":"GameStatuses.Id=Games.Status"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name, ClaimIsDeferred, ClaimIs3x, OfferRecipient, GameStatuses.Description")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName", "ClaimIsDeferred", "ClaimIs3x", "OfferRecipient", "GameStatus"])
     if gamedata["GameStatus"] != "In Progress":
         return b"FAILURE\r\nGame is over.\r\n\r\n"
     position = gamedata['Position']
@@ -190,11 +190,15 @@ def move(cursor, params, connhandler):
         return b"FAILURE\r\nOut of turn play\r\n\r\n"
     if chesslogic.isValidMove(position, initial, final):
         newposition, captured, isEnPassant, mover = chesslogic.move(position, initial, final)
-        gamestatus = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["DeferredClaim"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
+        gamestatus = chesslogic.terminalStatus(newposition, gamedata['WhiteId'], gamedata['BlackId'], gamedata["OfferRecipient"], gamedata["ClaimIsDeferred"], bool(gamedata["ClaimIs3x"]), gameid, cursor)
         status, substatus = chesslogic.unwrapStatus(gamestatus, turn=='W')
         statuscursor = dblogic.selectCommon(cursor, "GameStatuses INNER JOIN GameSubstatuses ON GameStatuses.Id=GameSubstatuses.Superstatus", {"GameStatuses.Description":status, "GameSubstatuses.Description":substatus}, "GameStatuses.Id, GameSubstatuses.Id")
         statusdata = dblogic.unwrapCursor(statuscursor, False, ["StatusId","SubstatusId"])
-        dblogic.updateCommon(cursor, "Games", {"Position": newposition, "Status":statusdata["StatusId"], "Substatus":statusdata["SubstatusId"]}, gameid)
+        gameupdate = {"Position": newposition, "Status":statusdata["StatusId"], "Substatus":statusdata["SubstatusId"],
+                                                "LiveClaim": 0, "ClaimIsDeferred": 0}
+        if gamedata["OfferRecipient"] == uid:
+            gameupdate["OfferRecipient"] = None
+        dblogic.updateCommon(cursor, "Games", gameupdate, gameid)
         movecountcursor = dblogic.selectCommon(cursor, "Moves", {"Game": gameid, "Player": uid}, "COUNT(Id)")
         sequence = dblogic.unwrapCursor(movecountcursor, False)[0] + 1
         annotation = chesslogic.annotateMove(position, newposition, initial, final, mover, captured)

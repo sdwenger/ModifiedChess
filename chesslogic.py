@@ -416,7 +416,7 @@ def terminalStatus(position, whiteid, blackid, offerrecipientid, claimantid, is3
     if offerrecipientid != None:
         isRecipientNonKing = lambda x: (x!='K' and x.isupper()) if offerrecipientid==whiteid else lambda x: (x!='k' and x.islower())
         for i in allsquares:
-            if isReceipientNonKing(i):
+            if isRecipientNonKing(i):
                 break
         else:
             return AUTOACCEPT
