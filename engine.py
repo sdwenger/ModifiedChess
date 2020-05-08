@@ -22,6 +22,11 @@ def bytewrap(obj):
     else:
         return bytes(str(obj), "UTF-8")
 
+def nullwrap(val, default, nullvalue=None):
+    if val==nullvalue:
+        return default
+    return val
+
 def login(cursor, params, connhandler):
     uname = params[0]
     pwd = params[1]
@@ -159,12 +164,13 @@ def getgamestate(cursor, params, connhandler):
     usercursor = dblogic.selectCommon(cursor, "Users", {"Name":uname}, "Id")
     userdata = dblogic.unwrapCursor(usercursor, False, ["Id"])
     uid = userdata['Id']
-    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name")
-    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName"])
+    gamecursor = dblogic.selectGameWithPlayer(cursor, uid, {"Games.Id":gameid}, {"(SELECT Id, Name FROM Users) AS BlackUser":"Games.Black=BlackUser.Id", "(SELECT Id, Name FROM Users) AS WhiteUser":"Games.White=WhiteUser.Id"}, "Position, White, Black, WhiteUser.Name, BlackUser.Name, OfferRecipient, LiveClaim")
+    gamedata = dblogic.unwrapCursor(gamecursor, False, ["Position", "WhiteId", "BlackId", "WhiteName", "BlackName", "OfferRecipient", "LiveClaim"])
     if (gamedata == None): #invalid game id for user
         return b"FAILURE\r\nCouldn't find game with specified Id\r\n\r\n"
     else:
-        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gamedata["Position"],'W' if uid==gamedata["WhiteId"] else 'B', gamedata["WhiteName"], gamedata["BlackName"]))
+        recipient = gamedata["OfferRecipient"]
+        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gamedata["Position"],'W' if uid==gamedata["WhiteId"] else 'B', gamedata["WhiteName"], gamedata["BlackName"], "NONE" if recipient==None else ("IN" if recipient==uid else "OUT"), int(bool(gamedata["LiveClaim"]))))
 
 def move(cursor, params, connhandler):
     gameid, initial, final, sessionid = params
@@ -317,12 +323,14 @@ def drawgame(cursor, params, connhandler):
         next(receipientPieceGen)
     except StopIteration:
         drawsubstatus = "Autoaccept"
+        response = "COMPLETEDDRAW\r\nAutoaccept"
     #check if live draw offer from opponent exists- if yes, draw by agreement
     updatedata = {}
     lossbypenalty = False
     if drawsubstatus == None:
-        if gamedata['OfferRecipient'] == uid:
+        if gamedata['Recipient'] == uid:
             drawsubstatus = "Agreement"
+            response = "COMPLETEDDRAW\r\nAgreement"
         elif drawtype == "CLAIM":
             if gamedata['LiveClaim'] == 1:
                 return b"FAILURE\r\nCan only claim a draw once per turn.\r\n\r\n"
@@ -332,40 +340,54 @@ def drawgame(cursor, params, connhandler):
             if isblackplayer != (position[-1] == 'B'):
                 return b"FAILURE\r\nCan only claim a draw during your turn\r\n\r\n"
             if claimtime=="NOW":
-                success = checkDrawClaim(gameid, is3x)
+                success = chesslogic.checkDrawClaim(gameid, is3x)
                 if success:
                     drawsubstatus = "3 Fold Rep" if is3x else "50 Move"
+                    response = "COMPLETEDDRAW\r\n%s"%drawsubstatus
                 else:
                     updatedata['LiveClaim'] = 1
                     updatedata['ClaimIsDeferred'] = 0
                     updatedata['OfferRecipient'] = oppid
                     faultindex = "BlackClaimFaults" if isblackplayer else "WhiteClaimFaults"
-                    updatedata[faultindex] = gamedata[faultindex]+1
+                    updatedata[faultindex] = nullwrap(gamedata[faultindex],0)+1
                     if updatedata[faultindex] >= 3:
                         lossbypenalty = True
+                        response = "PENALTYLOSS"
+                    else:
+                        response = "CLAIM\r\nFAULT\r\n%s"%updatedata[faultindex]
             else:
                 updatedata['LiveClaim'] = 1
                 updatedata['ClaimIsDeferred'] = 1
                 updatedata['ClaimIs3x'] = (1 if is3x else 0)
                 updatedata['OfferRecipient'] = oppid
+                response = "CLAIM\r\nDEFERRED"
         elif drawtype == "OFFER":
-            if gamedata['OfferRecipient'] == oppid:
+            if gamedata['Recipient'] == oppid:
                 return b"FAILURE\r\nDraw offer already live\r\n\r\n"
+            response = "OFFER"
+            updatedata['OfferRecipient'] = oppid
         else:
             return b"FAILURE\r\nInvalid draw parameter\r\n\r\n"
     statuscursor = None
     if drawsubstatus != None:
+        textstatus = "Draw"
         statuscursor = dblogic.selectCommon(cursor, "GameStatuses INNER JOIN GameSubstatuses ON GameStatuses.Id=GameSubstatuses.Superstatus", {"GameSubstatuses.Description": drawsubstatus}, "GameStatuses.Id, GameSubstatuses.Id")
     elif lossbypenalty:
         textstatus = "White win" if isblackplayer else "Black win"
         statuscursor = dblogic.selectCommon(cursor, "GameStatuses INNER JOIN GameSubstatuses ON GameStatuses.Id=GameSubstatuses.Superstatus", {"GameSubstatuses.Description": "Penalty", "GameStatuses.Description": textstatus}, "GameStatuses.Id, GameSubstatuses.Id")
+        drawsubstatus = "Penalty"
     if statuscursor != None:
-        statusdata = dblogic.unwrapcursor(statuscursor, False, ["StatusId","SubstatusId"])
+        statusdata = dblogic.unwrapCursor(statuscursor, False, ["StatusId","SubstatusId"])
         updatedata["Status"] = statusdata["StatusId"]
         updatedata["Substatus"] = statusdata["SubstatusId"]
-    #add something here or check for updatedata['Status'] later to serverlogic.notify opponent
+    if "Status" in updatedata:
+        oppnotification = "STATUSCHANGE\r\n%s\r\n%s\r\n%s"%(gameid, textstatus, drawsubstatus)
+    else:
+        oppnotification = "DRAWOFFER"
+    serverlogic.notifyuser(oppname, bytewrap("NOTIFY\r\n%s\r\n\r\n"%oppnotification))
+    print(updatedata)
     dblogic.updateCommon(cursor, "Games", updatedata, gameid)
-    return bytewrap("SUCCESS\r\n\r\n")
+    return bytewrap("SUCCESS\r\n%s\r\n\r\n"%response)
         
 def killserver(cursor, params, connhandler):
     return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"
@@ -393,6 +415,7 @@ cmdfunctions = {
     "PROMOTE" : promote,
     "SHOWMOVEHISTORY": showmovehistory,
     "RESIGN" : resign,
+    "DRAWGAME" : drawgame,
     "KILLSERVER" : killserver
 }
 
@@ -405,7 +428,9 @@ def handler(connhandler, data):
         dbconn = dblogic.connect()
         if cmd in cmdfunctions:
             response = cmdfunctions[cmd](dbconn.cursor(), params, connhandler)
+            dbconn.commit()
         else:
+            dbconn.rollback()
             response = b'Invalid Command\r\n\r\n'
     except Exception as e:
         response = bytewrap(e)

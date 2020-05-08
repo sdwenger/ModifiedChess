@@ -2,6 +2,7 @@ import socket
 import time
 import threading
 import tkinter as tk
+from tkinter import ttk
 import sys
 import chesslogic
 
@@ -313,15 +314,35 @@ def handleGetGameState(params):
     turn = position[69]
     setboard(squares, turn)
     uicomponents['/gameframe/position'] = position
+    setofferdraw(params[5])
+    setclaimdraw(int(params[6])==1, params[2]==turn)
+
+def setofferdraw(offertype):
+    paths = {"NONE":'/gameframe/gamecontrol/offerdraw', "IN":'/gameframe/gamecontrol/acceptdraw', "OUT":'/gameframe/gamecontrol/alreadyoffered'}
+    for i in paths:
+        if i==offertype:
+            uicomponents[paths[i]].place(x=75,y=50,width=135,height=40)
+        else:
+            uicomponents[paths[i]].place_forget()
+
+def setclaimdraw(claimed, inTurn):
+    paths = '/gameframe/gamecontrol/alreadyclaimed','/gameframe/gamecontrol/claimdraw'
+    path = ('/gameframe/gamecontrol/alreadyclaimed' if claimed else '/gameframe/gamecontrol/claimdraw') if inTurn else ''
+    for i in paths:
+        if i==path:
+            uicomponents[i].place(x=75,y=100,width=135,height=40)
+        else:
+            uicomponents[i].place_forget()
 
 def handleNotify(params):
     notification = params[0]
     notifparams = params[1:]
     if notification=="STATUSCHANGE":
-        print(params)
         gameid, gamestatus, gamesubstatus = params[1:]
         if gameid == uicomponents['/gameframe/gameboard/gameid']:
             uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
+    elif notification=="DRAWOFFER":
+        setofferdraw("IN")
     elif notification=="OPPMOVE" or notification=="ENEMYPROMOTE":
         gameid, annotation, strsequence, newposition, gamestatus, gamesubstatus = notifparams
         print(gamestatus, gamesubstatus)
@@ -476,6 +497,25 @@ def handleResign(params):
         gamestatus, gamesubstatus = params[1:]
         uicomponents['/gameframe/gameheader/turnstring'].set("%s by %s"%(gamestatus, gamesubstatus))
 
+def handleDrawGame(params):
+    print(params)
+    if params[0] == "SUCCESS":
+        responsetype = params[1]
+        if responsetype == "COMPLETEDDRAW":
+            drawtype = params[2]
+            uicomponents['/gameframe/gameheader/turnstring'].set("Draw by %s"%drawtype)
+        elif responsetype == "OFFER":
+            setofferdraw("OUT")
+        elif responsetype == "CLAIM":
+            claimresult = params[2]
+            setofferdraw("OUT")
+            if claimresult == "FAULT":
+                faultcount = params[3]
+            elif claimresult == "DEFERRED":
+                pass
+        elif responsetype == "PENALTYLOSS":
+            pass
+
 def setboard(squares, turn):
     global checkSquare, promotionInProgress
     oldchecksquare = checkSquare
@@ -521,7 +561,8 @@ functions = {
     "MOVE" : handleMove,
     "PROMOTE" : handlePromote,
     "SHOWMOVEHISTORY": handleShowMoveHistory,
-    "RESIGN": handleResign
+    "RESIGN": handleResign,
+    "DRAWGAME": handleDrawGame
 }
 
 def execGen(gen):
@@ -659,6 +700,18 @@ def cancelchallenge():
 def serverresign():
     receiver.sock.send(bytes('RESIGN\r\n%s\r\n%s\r\n\r\n'%(uicomponents['/gameframe/gameboard/gameid'], receiver.sessionid), "UTF-8"))
 
+def serverdrawoffer():
+    receiver.sock.send(bytes('DRAWGAME\r\n%s\r\n%s\r\nOFFER\r\n\r\n'%(uicomponents['/gameframe/gameboard/gameid'], receiver.sessionid), "UTF-8"))
+
+def opendrawclaimpanel():
+    uicomponents['/gameframe/gamecontrol/claimdrawoptions'].place(x=55,y=200,width=175,height=40)
+
+def serverclaimdraw():
+    servervalues = {"3 Fold":"THREEFOLD", "50 Move":"FIFTYMOVE", "Now":"NOW", "After Move":"AFTERMOVE"}
+    reason = uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].get()
+    when = uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].get()
+    receiver.sock.send(bytes('DRAWGAME\r\n%s\r\n%s\r\nCLAIM\r\n%s\r\n%s\r\n\r\n'%(uicomponents['/gameframe/gameboard/gameid'], receiver.sessionid, servervalues[reason], servervalues[when]), "UTF-8"))
+
 def packsquares(blackview=False):
     basepath = '/gameframe/gameboard'
     initpath = "%s/%s"%(basepath, "squaresInitialized")
@@ -787,17 +840,20 @@ uicomponents['/gameframe/gameheader'].place(x=0, y=0, width=1400, height=100)
 uicomponents['/gameframe/gamecontrol'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gamecontrol/back'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Return to Menu", command=backtomenu)
 uicomponents['/gameframe/gamecontrol/back'].place(x=75,y=0,width=135,height=40)
-uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Offer Draw")
-uicomponents['/gameframe/gamecontrol/offerdraw'].place(x=75,y=50,width=135,height=40)
-uicomponents['/gameframe/gamecontrol/claimdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Claim Draw")
-uicomponents['/gameframe/gamecontrol/claimdraw'].place(x=75,y=100,width=135,height=40)
+uicomponents['/gameframe/gamecontrol/offerdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Offer Draw", command=serverdrawoffer)
+uicomponents['/gameframe/gamecontrol/acceptdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Accept Draw", command=serverdrawoffer)
+uicomponents['/gameframe/gamecontrol/alreadyoffered'] = tk.Label(uicomponents['/gameframe/gamecontrol'], text="You have offered a draw this turn.")
+uicomponents['/gameframe/gamecontrol/claimdraw'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Claim Draw", command=opendrawclaimpanel)
+uicomponents['/gameframe/gamecontrol/alreadyclaimed'] = tk.Label(uicomponents['/gameframe/gamecontrol'], text="You have claimed a draw this turn.")
 uicomponents['/gameframe/gamecontrol/resign'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Resign", command=serverresign)
 uicomponents['/gameframe/gamecontrol/resign'].place(x=75,y=150,width=135,height=40)
 uicomponents['/gameframe/gamecontrol/claimdrawoptions'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
-uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
-uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].place(relx=0,rely=0,relwidth=.5,relheight=1)
-uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = tk.Listbox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'])
-uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].place(relx=.5,rely=0,relwidth=.5,relheight=1)
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'] = ttk.Combobox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'], values=["3 Fold", "50 Move"])
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/reason'].place(relx=0,rely=0,relwidth=.5,relheight=.5)
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'] = ttk.Combobox(uicomponents['/gameframe/gamecontrol/claimdrawoptions'], values=["Now", "After Move"])
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/when'].place(relx=.5,rely=0,relwidth=.5,relheight=.5)
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/submitclaim'] = tk.Button(uicomponents['/gameframe/gamecontrol/claimdrawoptions'], text="Finalize Claim", command=serverclaimdraw)
+uicomponents['/gameframe/gamecontrol/claimdrawoptions/submitclaim'].place(relx=0,rely=.5,relwidth=1,relheight=.5)
 uicomponents['/gameframe/gamecontrol/promotion'] = tk.Frame(uicomponents['/gameframe/gamecontrol'])
 uicomponents['/gameframe/gamecontrol/promotion/queen'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("queen"))
 uicomponents['/gameframe/gamecontrol/promotion/queen'].place(relx=0, relwidth=.5, rely=0, relheight=.5)

@@ -8,7 +8,7 @@ baseUpdateQuery = "UPDATE %s SET %s WHERE %s"
 baseSelectQuery = "SELECT %s FROM %s WHERE %s"
 
 conn = None
-autoCommit = True
+autoCommit = False
 
 def connect():
     global conn
