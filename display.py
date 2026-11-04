@@ -581,64 +581,6 @@ def execGen(gen):
     for i in gen:
         pass
 
-def sockExtract(sock, bufsize):
-    oldtimeout = sock.gettimeout()
-    sock.settimeout(1)
-    try:
-        data = sock.recv(bufsize)
-    except socket.timeout:
-        data = b''
-    except ConnectionResetError:
-        data = None
-    except Exception as e:
-        print(e)
-        exit()
-    sock.settimeout(oldtimeout)
-    return data
-
-class Receiver(threading.Thread):
-    def __init__(self, sock):
-        threading.Thread.__init__(self)
-        self.sock = sock
-        self.closed = False
-        self.sessionid = ""
-        self.uname = ""
-        
-    def run(self):
-        global sessionid
-        data = b''
-        while not self.closed:
-            data += sockExtract(self.sock, 1024)
-            if self.isEndOfResponse(data):
-                resp, data = self.separate(data)
-                print(resp)
-                print(data)
-                lines = resp.decode("UTF-8").split('\r\n')
-                func, params = lines[0], lines[1:-2]
-                if func in functions:
-                    functions[func](params)
-        
-    def isEndOfResponse(self, data):
-        return b'\r\n\r\n' in data
-        
-    def separate(self, data):
-        split = data.find(b'\r\n\r\n')+4
-        command = data[:split]
-        trail = data[split:]
-        return (command, trail)
-    
-    def close(self):
-        self.closed = True
-        self.sock.close()
-
-def extract(sock):
-    data = b''
-    recv = sockExtract(sock, 1024)
-    while recv:
-        yield recv
-        recv = sockExtract(sock, 1024)
-    return data
-
 def serverlogin():
     global uicomponents, receiver
     uname = uicomponents['/login/uname'].get()
@@ -765,16 +707,12 @@ def backtomenu():
     servershowchallenges()
     servershowactivegames()
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
 if ("-p" in sys.argv):
     port = int(sys.argv[sys.argv.index("-p")+1])
 else:
     port = 8888
 
-s.connect(("localhost", port))
-
-receiver = Receiver(s)
+receiver = clientlogic.Receiver(port, functions)
 receiver.start()
 
 uicomponents['/'] = tk.Tk()
