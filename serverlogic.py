@@ -4,6 +4,7 @@ import threading
 import datetime
 import random
 import chesslogic
+import signal
 
 sessionsdata = {}
 unametosessions = {}
@@ -170,6 +171,7 @@ class ServerThread(threading.Thread):
 
 def mainloop(connHandler=None, loopHandler=None):
     global serverThread
+    signal.signal(signal.SIGINT, interrupthandler)
     if loopHandler == None:
         def loopHandler():
             pass
@@ -190,6 +192,12 @@ def closeServer():
 def main(connHandler=None, loopHandler=None):
     mainloop(connHandler, loopHandler)
     closeServer()
+
+def interrupthandler(*_):
+    global acceptConnections
+    print(_)
+    print("Caught Interrupt, exiting")
+    acceptConnections = False
     
 allconnections = []
 
