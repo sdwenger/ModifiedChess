@@ -35,7 +35,7 @@ def notifyuser(uname, data):
             for j in session.connections:
                 try:
                     j.conn.send(data)
-                except BrokenPipeError:
+                except (BrokenPipeError,ConnectionAbortedError):
                     j.close()
 
 def pushsessionid(sessionid, uname, connhandler):
