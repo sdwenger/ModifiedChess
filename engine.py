@@ -170,7 +170,7 @@ def getgamestate(cursor, params, connhandler):
         return b"FAILURE\r\nCouldn't find game with specified Id\r\n\r\n"
     else:
         recipient = gamedata["OfferRecipient"]
-        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gamedata["Position"],'W' if uid==gamedata["WhiteId"] else 'B', gamedata["WhiteName"], gamedata["BlackName"], "NONE" if recipient==None else ("IN" if recipient==uid else "OUT"), int(bool(gamedata["LiveClaim"]))))
+        return bytewrap("SUCCESS\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n%s\r\n\r\n"%(gamedata["Position"],'W' if uid==gamedata["WhiteId"] else 'B', gamedata["WhiteName"], gamedata["BlackName"], "NONE" if recipient==None else ("IN" if recipient==uid else "OUT"), int(bool(gamedata["LiveClaim"])), gameid))
 
 def move(cursor, params, connhandler):
     gameid, initial, final, sessionid = params
