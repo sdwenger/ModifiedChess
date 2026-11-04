@@ -5,6 +5,9 @@ import tkinter as tk
 from tkinter import ttk
 import sys
 import chesslogic
+import clientlogic
+
+WIDTH, HEIGHT = 1400, 800
 
 uicomponents = {}
 
@@ -846,7 +849,7 @@ uicomponents['/gameframe/gameheader/playerslabel'] = tk.Label(uicomponents['/gam
 uicomponents['/gameframe/gameheader/playerslabel'].place(relx=0, rely=0, relwidth=1, relheight=.5)
 uicomponents['/gameframe/gameheader/turnlabel'] = tk.Label(uicomponents['/gameframe/gameheader'], textvariable=uicomponents['/gameframe/gameheader/turnstring'])
 uicomponents['/gameframe/gameheader/turnlabel'].place(relx=0, rely=.5, relwidth=1, relheight=.5)
-uicomponents['/gameframe/gameheader'].place(x=0, y=0, width=1400, height=100)
+uicomponents['/gameframe/gameheader'].place(x=0, y=0, width=WIDTH, height=HEIGHT/10)
 uicomponents['/gameframe/gamecontrol'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gamecontrol/back'] = tk.Button(uicomponents['/gameframe/gamecontrol'], text="Return to Menu", command=backtomenu)
 uicomponents['/gameframe/gamecontrol/back'].place(x=75,y=0,width=135,height=40)
@@ -873,15 +876,16 @@ uicomponents['/gameframe/gamecontrol/promotion/rook'] = tk.Button(uicomponents['
 uicomponents['/gameframe/gamecontrol/promotion/rook'].place(relx=0, relwidth=.5, rely=.5, relheight=.5)
 uicomponents['/gameframe/gamecontrol/promotion/bishop'] = tk.Button(uicomponents['/gameframe/gamecontrol/promotion'], command=PromotionHandler("bishop"))
 uicomponents['/gameframe/gamecontrol/promotion/bishop'].place(relx=.5, relwidth=.5, rely=.5, relheight=.5)
-uicomponents['/gameframe/gamecontrol'].place(x=0, y=100, width=300, height=800)
+uicomponents['/gameframe/gamecontrol'].place(x=0, y=HEIGHT/10, width=WIDTH*3/14, height=HEIGHT*0.8)
 uicomponents['/gameframe/gameboard'] = tk.Frame(uicomponents['/gameframe'])
 uicomponents['/gameframe/gameboard/squaresInitialized'] = False
-uicomponents['/gameframe/gameboard'].place(x=300, width=800, height=800, y=100)
+uicomponents['/gameframe/gameboard'].place(x=WIDTH*3/14, width=WIDTH*8/14, height=HEIGHT*0.8, y=HEIGHT/10)
 uicomponents['/gameframe/movepanel'] = tk.Frame(uicomponents['/gameframe'])
-uicomponents['/gameframe/movepanel'].place(x=1100, width=300, height=1400, y=0)
+uicomponents['/gameframe/movepanel'].place(x=WIDTH*11/14, width=WIDTH*3/14, height=HEIGHT, y=0)
 packsquares()
+print(uicomponents['/'].winfo_width(), uicomponents['/'].winfo_height())
 photoimages = genphotoimages()
     
-uicomponents['/'].geometry("1400x1000")
+uicomponents['/'].geometry("%sx%s"%(WIDTH,HEIGHT))
 uicomponents['/'].mainloop()
 receiver.close()
