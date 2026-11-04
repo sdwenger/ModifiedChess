@@ -425,15 +425,15 @@ def drawgame(cursor, params, connhandler):
     return bytewrap("SUCCESS\r\n%s\r\n\r\n"%response)
         
 def killserver(cursor, params, connhandler):
-    return b"FAILURE\r\nYou really need to debug this function better before trying to use it.\r\n\r\n"
     if len(params) == 0:
         return b"FAILURE\r\n\r\n"
     sessionid = params[0]
-    uname = serverlogic.getunamefromsession(sessionid)
+    uname = serverlogic.getunamefromsession(sessionid, connhandler)
     if uname == 'Sullivan':
         response = b"SUCCESS\r\n\r\n"
         print("Kill received")
         serverlogic.acceptConnections = False
+        exit()
     else:
         response = b"FAILURE\r\n\r\n"
     return response
@@ -467,6 +467,8 @@ def handler(connhandler, data):
         else:
             dbconn.rollback()
             response = b'Invalid Command\r\n\r\n'
+    except SystemExit as e:
+        response = bytewrap("Shutting down")
     except Exception as e:
         response = bytewrap(e)
         serverlogic.acceptConnections = False
